@@ -27,7 +27,7 @@ export const CONFIG_PADRAO = Object.freeze({
       'Te esperamos! 🌱',
     vencendo:
       'Ei {primeiro_nome}, tudo bem?\n\n' +
-      'Você ainda tem *{valor}* de cashback aqui na {loja}, mas ele vence em *{validade}*! 😱\n\n' +
+      'Você ainda tem *{valor}* de cashback aqui na {loja}, mas ele vence *{prazo}* ({validade})! 😱\n\n' +
       'Para resgatar, basta informar o código *{codigo}* no caixa na sua próxima compra (compra mínima de {minimo}).\n\n' +
       'Corre aproveitar! 🌿💚',
   }),
@@ -256,9 +256,24 @@ export function planejarMensagens(giftback, config = CONFIG_PADRAO) {
   return plano;
 }
 
-/** Monta o texto final trocando as {variáveis}. */
-export function montarMensagem(modelo, { cliente, giftback, config = CONFIG_PADRAO }) {
+/**
+ * Prazo do giftback em palavras, calculado no DIA DO ENVIO (nunca no dia em que a mensagem foi agendada):
+ * 'hoje' | 'amanhã' | 'em 2 dias'. Se já venceu: 'já venceu'.
+ */
+export function prazoEmPalavras(expiraEm, hoje) {
+  const faltam = diasEntre(hoje, diaSP(expiraEm));
+  if (faltam < 0) return 'já venceu';
+  if (faltam === 0) return 'hoje';
+  if (faltam === 1) return 'amanhã';
+  return `em ${faltam} dias`;
+}
+
+/** Monta o texto final trocando as {variáveis}. `hoje` = dia do envio ('AAAA-MM-DD'). */
+export function montarMensagem(modelo, { cliente, giftback, config = CONFIG_PADRAO, hoje = diaSP(new Date()) }) {
+  const faltam = giftback ? diasEntre(hoje, diaSP(giftback.expiraEm)) : null;
   const valores = {
+    prazo: giftback ? prazoEmPalavras(giftback.expiraEm, hoje) : '',
+    dias_restantes: faltam == null ? '' : String(Math.max(0, faltam)),
     primeiro_nome: primeiroNome(cliente?.nome),
     nome: `${cliente?.nome ?? ''} ${cliente?.sobrenome ?? ''}`.trim(),
     valor: giftback ? (giftback.percentual ? `${giftback.percentual}%` : formatarReais(giftback.valorCentavos)) : '',
@@ -268,6 +283,34 @@ export function montarMensagem(modelo, { cliente, giftback, config = CONFIG_PADR
     loja: config.nomeLoja,
   };
   return String(modelo).replace(/\{(\w+)\}/g, (tudo, chave) => (chave in valores ? valores[chave] : tudo));
+}
+
+/**
+ * Organiza a fila do dia. Recebe as mensagens pendentes já vencidas (devidaEm <= hoje), cada uma com
+ * {id, tipo, devidaEm, giftback, cliente}, e devolve UMA por giftback: a mais recente.
+ * As mais antigas do mesmo giftback (ex.: lembrete atrasado quando já é dia do aviso final) vão em
+ * `substituidas`, para serem marcadas como puladas quando a principal for enviada: o cliente
+ * recebe uma mensagem só, sempre com a informação certa.
+ * Ordem: atrasadas primeiro (mais antigas antes), depois aviso final, lembrete e giftback novo.
+ */
+export function organizarFila(pendentes, hoje) {
+  const porGiftback = new Map();
+  for (const m of pendentes) {
+    const chave = m.giftback?.id ?? m.giftbackId ?? m.id;
+    if (!porGiftback.has(chave)) porGiftback.set(chave, []);
+    porGiftback.get(chave).push(m);
+  }
+  const ordemTipo = { vencendo: 0, lembrete: 1, envio: 2 };
+  const fila = [];
+  for (const grupo of porGiftback.values()) {
+    grupo.sort((a, b) => b.devidaEm.localeCompare(a.devidaEm) || (ordemTipo[a.tipo] ?? 9) - (ordemTipo[b.tipo] ?? 9));
+    const [principal, ...antigas] = grupo;
+    const diasAtraso = diasEntre(principal.devidaEm, hoje);
+    fila.push({ ...principal, atrasada: diasAtraso > 0, diasAtraso, substituidas: antigas.map((x) => x.id) });
+  }
+  return fila.sort((a, b) =>
+    (b.diasAtraso - a.diasAtraso) || (ordemTipo[a.tipo] ?? 9) - (ordemTipo[b.tipo] ?? 9)
+    || String(a.giftback?.expiraEm).localeCompare(String(b.giftback?.expiraEm)));
 }
 
 /**

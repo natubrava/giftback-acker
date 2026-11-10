@@ -2,7 +2,7 @@
 // O cálculo continua em motor.js; o banco grava tudo de uma vez (funções gb_registrar_compra
 // e gb_cancelar_compra) e garante as regras críticas (1 giftback ativo, só a equipe acessa).
 import {
-  CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP,
+  CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila,
 } from './motor.js';
 
 const PAGINA = 1000;
@@ -239,8 +239,7 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       const fila = linhas
         .filter((m) => m.giftback?.status === 'ativo' && m.cliente)
         .map((m) => ({ ...mensagem(m), giftback: giftback(m.giftback), cliente: cliente(m.cliente) }));
-      const ordem = { vencendo: 0, lembrete: 1, envio: 2 };
-      return fila.sort((a, b) => (ordem[a.tipo] ?? 9) - (ordem[b.tipo] ?? 9) || a.giftback.expiraEm.localeCompare(b.giftback.expiraEm));
+      return organizarFila(fila, hoje);
     },
 
     async proximasMensagens(dias = 7) {
@@ -252,13 +251,32 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       return count || 0;
     },
 
-    async marcarMensagem(id, status) {
+    /** Marca a mensagem. `substituidas`: mensagens antigas do mesmo giftback que deixam de ser necessárias. */
+    async marcarMensagem(id, status, substituidas = []) {
       if (!['pendente', 'enviada', 'pulada'].includes(status)) throw new Error('Status inválido.');
       const { data } = await supabase.auth.getUser();
       ok(await supabase.from('gb_mensagens').update({
         status, enviada_em: status === 'enviada' ? new Date().toISOString() : null,
         enviada_por: status === 'enviada' ? data.user?.email || null : null,
       }).eq('id', id));
+      if (substituidas.length) {
+        if (status === 'pendente') {
+          ok(await supabase.from('gb_mensagens').update({ status: 'pendente', motivo: null })
+            .in('id', substituidas).eq('status', 'pulada').eq('motivo', 'substituída'));
+        } else {
+          ok(await supabase.from('gb_mensagens').update({ status: 'pulada', motivo: 'substituída' })
+            .in('id', substituidas).eq('status', 'pendente'));
+        }
+      }
+    },
+
+    /** Quantas mensagens já foram enviadas hoje (para o painel). */
+    async enviadasHoje() {
+      const hoje = diaSP(relogio());
+      const { count, error } = await supabase.from('gb_mensagens').select('id', { count: 'exact', head: true })
+        .eq('status', 'enviada').gte('enviada_em', `${hoje}T00:00:00-03:00`);
+      if (error) throw erro(error);
+      return count || 0;
     },
 
     async resumoGeral() {

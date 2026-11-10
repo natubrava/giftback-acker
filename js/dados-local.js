@@ -6,7 +6,7 @@
 // Toda regra de negócio vem de motor.js; aqui só se lê e grava.
 import {
   CONFIG_PADRAO, calcularCompra, giftbackVigente, gerarCodigo, planejarMensagens,
-  clienteCombina, normalizarTelefone, diaSP,
+  clienteCombina, normalizarTelefone, diaSP, organizarFila,
 } from './motor.js';
 
 const CHAVE = 'giftback-acker-teste-v1';
@@ -268,8 +268,7 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
         if (!giftback || !cliente || giftback.status !== 'ativo') continue;
         fila.push({ ...m, giftback, cliente });
       }
-      const ordem = { vencendo: 0, lembrete: 1, envio: 2 };
-      return fila.sort((a, b) => ordem[a.tipo] - ordem[b.tipo] || a.giftback.expiraEm.localeCompare(b.giftback.expiraEm));
+      return organizarFila(fila, hoje);
     },
 
     async proximasMensagens(dias = 7) {
@@ -278,13 +277,26 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
       return estado.mensagens.filter((m) => m.status === 'pendente' && m.devidaEm > hoje && m.devidaEm <= limite).length;
     },
 
-    async marcarMensagem(id, status) {
+    /** Marca a mensagem. `substituidas`: mensagens antigas do mesmo giftback que deixam de ser necessárias. */
+    async marcarMensagem(id, status, substituidas = []) {
       const m = estado.mensagens.find((x) => x.id === id);
       if (!m) throw new Error('Mensagem não encontrada.');
       if (!['pendente', 'enviada', 'pulada'].includes(status)) throw new Error('Status inválido.');
       m.status = status;
       m.enviadaEm = status === 'enviada' ? agoraISO() : null;
+      for (const sid of substituidas) {
+        const s = estado.mensagens.find((x) => x.id === sid);
+        if (!s) continue;
+        if (status === 'pendente') { if (s.status === 'pulada' && s.motivo === 'substituída') { s.status = 'pendente'; delete s.motivo; } }
+        else if (s.status === 'pendente') { s.status = 'pulada'; s.motivo = 'substituída'; }
+      }
       salvar();
+    },
+
+    /** Quantas mensagens já foram enviadas hoje (para o painel). */
+    async enviadasHoje() {
+      const hoje = diaSP(relogio());
+      return estado.mensagens.filter((m) => m.status === 'enviada' && m.enviadaEm && diaSP(m.enviadaEm) === hoje).length;
     },
 
     async resumoGeral() {

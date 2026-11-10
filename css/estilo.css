@@ -153,6 +153,15 @@ tr.clicavel:hover td { background: #f7fbf6; }
 tr.cancelada td { color: #9aa29c; text-decoration: line-through; }
 .rolagem { overflow-x: auto; }
 
+/* Faixa de aviso de mensagens pendentes (aparece em todas as telas) */
+.faixa { background: #b8461f; color: #fff; text-align: center; font-weight: 700; padding: 9px 14px; }
+.faixa a { color: #fff; text-decoration: none; }
+.faixa a:hover { text-decoration: underline; }
+.contador.atrasado { background: #e0452b; color: #fff; }
+.numero.alerta { border-color: #e0a090; background: var(--vermelho-claro); }
+.numero.alerta b { color: var(--vermelho); }
+.msg.atrasada { border-left: 5px solid #e0452b; }
+
 /* Mensagens */
 .msg { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; align-items: start; }
 .msg + .msg { margin-top: 12px; }

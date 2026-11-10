@@ -74,12 +74,43 @@ function abrirWhatsApp(cliente, texto) {
   return true;
 }
 
+// Quantas mensagens estão esperando envio. Atualiza o número na aba, o título da janela,
+// a faixa de aviso no topo e, se permitido, avisa o computador (notificação do Windows).
+let ultimoAviso = 0;
 async function atualizarContador() {
-  const n = (await dados.filaMensagens()).length;
+  if (!dados) return;
+  const fila = await dados.filaMensagens();
+  const n = fila.length;
+  const atrasadas = fila.filter((m) => m.atrasada).length;
   const el = document.getElementById('contador-mensagens');
   el.textContent = n;
   el.hidden = n === 0;
+  el.classList.toggle('atrasado', atrasadas > 0);
+  document.title = n ? `(${n}) Giftback Acker` : 'Giftback Acker';
+  const faixa = document.getElementById('faixa-mensagens');
+  if (faixa) {
+    const naTelaMensagens = (location.hash || '#caixa') === '#mensagens';
+    faixa.hidden = n === 0 || naTelaMensagens;
+    trocar(faixa, n ? h('a', { href: '#mensagens' },
+      atrasadas ? `⚠ ${atrasadas} mensage${atrasadas > 1 ? 'ns' : 'm'} de giftback ATRASADA${atrasadas > 1 ? 'S' : ''}` : `${n} mensage${n > 1 ? 'ns' : 'm'} de giftback para enviar hoje`,
+      atrasadas && n > atrasadas ? ` (e mais ${n - atrasadas} de hoje)` : '', ' → abrir a fila') : null);
+  }
+  // Notificação do computador: no máximo 1 por hora, só com mensagens pendentes.
+  if (n && 'Notification' in window && Notification.permission === 'granted' && Date.now() - ultimoAviso > 3600000) {
+    ultimoAviso = Date.now();
+    try {
+      const aviso = new Notification('Giftback Acker', {
+        body: atrasadas ? `${atrasadas} mensagem(ns) ATRASADA(S). Total na fila: ${n}.` : `${n} mensagem(ns) de giftback para enviar hoje.`,
+        tag: 'giftback-fila',
+      });
+      aviso.onclick = () => { window.focus(); location.hash = '#mensagens'; };
+    } catch { /* navegador sem suporte */ }
+  }
 }
+
+// Confere a fila a cada 10 minutos e quando a janela volta a ficar visível (ex.: virou o dia).
+setInterval(() => { atualizarContador().catch(() => {}); }, 10 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizarContador().catch(() => {}); });
 
 // ───────────────────────── CAIXA ─────────────────────────
 
@@ -132,7 +163,7 @@ function telaCaixa() {
     painelNovoCliente(painel, prefill, (c) => abrirCliente(c.id), () => { trocar(painel); campo.focus(); });
   }
 
-  trocar(tela, 
+  trocar(tela,
     h('div', { class: 'busca' }, campo, h('button', { class: 'botao', onclick: () => abrirNovo() }, '+ Cliente novo')),
     resultados, painel);
 
@@ -284,7 +315,7 @@ function desenharFormulario(area, cliente, g, redesenhar) {
   fValor.addEventListener('input', atualizar);
   fValor.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !confirmar.disabled) { e.preventDefault(); confirmar.focus(); } });
 
-  trocar(area, 
+  trocar(area,
     h('h3', {}, 'Lançar compra'),
     h('p', { class: 'suave pequeno', style: 'margin-bottom:8px' }, 'Digite só o valor dos produtos que NÃO estão em promoção.'),
     h('div', { class: 'valor-linha' }, h('span', { class: 'prefixo' }, 'R$'), fValor, confirmar),
@@ -369,24 +400,26 @@ function editarCliente(painel, c, depois) {
 // ───────────────────────── MENSAGENS ─────────────────────────
 
 async function telaMensagens() {
-  const fila = await dados.filaMensagens();
-  const proximas = await dados.proximasMensagens(7);
+  const [fila, proximas, enviadas] = await Promise.all([dados.filaMensagens(), dados.proximasMensagens(7), dados.enviadasHoje()]);
   const etiquetas = { envio: 'verde', lembrete: 'azul', vencendo: 'ambar' };
+  const atrasadas = fila.filter((m) => m.atrasada).length;
+  const textoAgora = (m) => M.montarMensagem(config.modelos[m.tipo], { cliente: m.cliente, giftback: m.giftback, config, hoje: hoje() });
 
   const itens = fila.map((m) => {
-    const texto = M.montarMensagem(config.modelos[m.tipo], { cliente: m.cliente, giftback: m.giftback, config });
-    const cartao = h('div', { class: 'cartao msg' });
+    const cartao = h('div', { class: 'cartao msg' + (m.atrasada ? ' atrasada' : '') });
     const acoes = h('div', { class: 'msg-acoes' });
+    const previa = h('div', { class: 'msg-texto' }, textoAgora(m));
     const marcar = (status) => tentar(async () => {
-      await dados.marcarMensagem(m.id, status);
+      await dados.marcarMensagem(m.id, status, m.substituidas);
       cartao.classList.toggle('feita', status !== 'pendente');
       desenharAcoes(status);
       await atualizarContador();
     });
     function desenharAcoes(status) {
       if (status === 'pendente') {
-        trocar(acoes, 
-          h('button', { class: 'botao whats', onclick: () => { if (abrirWhatsApp(m.cliente, texto)) marcar('enviada'); } }, 'Enviar no WhatsApp'),
+        trocar(acoes,
+          // o texto é montado de novo NA HORA do clique: se a tela ficou aberta de um dia para o outro, o prazo continua certo
+          h('button', { class: 'botao whats', onclick: () => { const t = textoAgora(m); previa.textContent = t; if (abrirWhatsApp(m.cliente, t)) marcar('enviada'); } }, 'Enviar no WhatsApp'),
           h('button', { class: 'botao', onclick: () => marcar('pulada') }, 'Pular'));
       } else {
         trocar(acoes, h('span', { class: 'etiqueta ' + (status === 'enviada' ? 'verde' : 'cinza') }, status === 'enviada' ? 'Enviada ✓' : 'Pulada'),
@@ -397,24 +430,34 @@ async function telaMensagens() {
     cartao.append(
       h('div', {},
         h('div', { class: 'linha-flex' },
+          m.atrasada ? h('span', { class: 'etiqueta vermelha' }, m.diasAtraso === 1 ? 'Atrasada 1 dia' : `Atrasada ${m.diasAtraso} dias`) : null,
           h('span', { class: 'etiqueta ' + etiquetas[m.tipo] }, M.TIPOS_MENSAGEM[m.tipo]),
           h('span', { class: 'msg-nome' }, nomeCompleto(m.cliente)),
           h('span', { class: 'suave pequeno' }, M.formatarTelefone(m.cliente.telefone))),
         h('div', { class: 'suave pequeno', style: 'margin-top:4px' },
           `Giftback de ${valorGift(m.giftback)} · vale até ${dia(m.giftback.expiraEm)} (${textoPrazo(m.giftback)})`,
-          m.devidaEm < hoje() ? ` · era para ${M.formatarDia(m.devidaEm)}` : ''),
-        h('details', {}, h('summary', {}, 'Ver a mensagem'), h('div', { class: 'msg-texto' }, texto))),
+          m.substituidas.length ? ' · substitui o lembrete que ficou para trás (o cliente recebe só esta)' : ''),
+        h('details', {}, h('summary', {}, 'Ver a mensagem'), previa)),
       acoes);
     return cartao;
   });
 
-  trocar(tela, 
-    h('h1', { class: 'titulo-tela' }, 'Mensagens para enviar hoje'),
+  const permissao = 'Notification' in window ? Notification.permission : 'indisponivel';
+  trocar(tela,
+    h('h1', { class: 'titulo-tela' }, 'Mensagens para enviar'),
+    h('div', { class: 'numeros' },
+      h('div', { class: 'numero' + (atrasadas ? ' alerta' : '') }, h('b', {}, atrasadas), h('span', {}, 'atrasadas')),
+      h('div', { class: 'numero' }, h('b', {}, fila.length - atrasadas), h('span', {}, 'para hoje')),
+      h('div', { class: 'numero' }, h('b', {}, enviadas), h('span', {}, 'enviadas hoje')),
+      h('div', { class: 'numero' }, h('b', {}, proximas), h('span', {}, 'nos próximos 7 dias'))),
     h('p', { class: 'suave', style: 'margin-bottom:14px' },
-      fila.length ? `${fila.length} mensage${fila.length > 1 ? 'ns' : 'm'} na fila. ` : '',
-      'Cada botão abre o WhatsApp Web da loja com o texto pronto: é só conferir e apertar Enter.',
-      proximas ? ` Nos próximos 7 dias entram mais ${proximas}.` : ''),
+      'Cada botão abre o WhatsApp Web da loja com o texto pronto: é só conferir e apertar Enter. ',
+      'Mensagem não enviada continua aqui no dia seguinte, marcada como atrasada, e o prazo no texto ("vence amanhã", "em 2 dias") é recalculado na hora do envio.'),
+    permissao === 'default' ? h('div', { class: 'caixa-info ambar', style: 'margin-bottom:14px' },
+      'Quer que o computador avise quando houver mensagens para enviar? ',
+      h('button', { class: 'link', onclick: () => Notification.requestPermission().then(() => { avisar('Pronto: o computador vai avisar.'); atualizarContador(); telaMensagens(); }) }, 'Ativar avisos')) : null,
     itens.length ? itens : h('div', { class: 'cartao vazio' }, 'Nenhuma mensagem pendente. Tudo em dia! 🌿'));
+  atualizarContador();
 }
 
 // ───────────────────────── CLIENTES ─────────────────────────
@@ -441,7 +484,7 @@ async function telaClientes() {
   filtro.addEventListener('input', desenhar);
   soGift.addEventListener('change', desenhar);
 
-  trocar(tela, 
+  trocar(tela,
     h('h1', { class: 'titulo-tela' }, 'Clientes do Club NatuBrava'),
     h('div', { class: 'numeros' },
       h('div', { class: 'numero' }, h('b', {}, resumo.clientes), h('span', {}, 'clientes com compra')),
@@ -500,7 +543,7 @@ async function telaConfig() {
 
   const variaveis = () => h('div', { class: 'variaveis' }, ['{primeiro_nome}', '{valor}', '{validade}', '{codigo}', '{minimo}', '{loja}'].map((v) => h('code', {}, v)));
 
-  trocar(tela, 
+  trocar(tela,
     h('h1', { class: 'titulo-tela' }, 'Configurações'),
     h('form', { onsubmit: (e) => { e.preventDefault(); salvar(); } },
       h('div', { class: 'cartao' },
@@ -638,6 +681,7 @@ function navegar() {
   trocar(tela);
   window.scrollTo(0, 0);
   tentar(() => desenhar());
+  if (dados) atualizarContador().catch(() => {});
 }
 
 let sistemaAberto = false;
