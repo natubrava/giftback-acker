@@ -460,6 +460,150 @@ async function telaMensagens() {
   atualizarContador();
 }
 
+// ───────────────────────── VENDAS DO PDV (Uniplus) ─────────────────────────
+
+let vendasUniplus = null; // última busca, para não buscar de novo ao trocar de aba
+
+async function telaUniplus() {
+  if (!dados.puxarVendasUniplus) {
+    trocar(tela, h('div', { class: 'cartao vazio' }, 'As vendas do PDV só aparecem na versão online.'));
+    return;
+  }
+  const dias = h('select', {}, [1, 2, 3, 5, 7].map((d) => h('option', { value: d, selected: d === 3 }, d === 1 ? 'hoje e ontem' : `últimos ${d} dias`)));
+  const situacao = h('p', { class: 'suave pequeno', style: 'margin-top:8px' });
+  const lista = h('div', { style: 'margin-top:14px' });
+  const botao = h('button', { class: 'botao principal grande' }, 'Puxar vendas do Uniplus');
+  botao.onclick = () => tentar(async () => {
+    botao.disabled = true;
+    situacao.textContent = 'Lendo as vendas no Uniplus… (leva de 20 a 60 segundos)';
+    try {
+      vendasUniplus = await dados.puxarVendasUniplus(Number(dias.value));
+      desenharLista();
+    } finally { botao.disabled = false; }
+  });
+
+  function desenharLista() {
+    const v = vendasUniplus || [];
+    const fid = v.filter((x) => x.cliente.fidelidade || x.clienteAcker);
+    const outras = v.filter((x) => !(x.cliente.fidelidade || x.clienteAcker));
+    situacao.textContent = vendasUniplus ? `${fid.length} venda${fid.length === 1 ? '' : 's'} de clientes do Club para lançar. ${outras.length} de outros clientes (sem cartão fidelidade).` : '';
+    trocar(lista,
+      fid.length ? fid.map((x) => cartaoVenda(x)) : (vendasUniplus ? h('div', { class: 'cartao vazio' }, 'Nenhuma venda nova de cliente do Club. Tudo lançado! 🌿') : null),
+      outras.length ? h('details', { class: 'cartao', style: 'margin-top:14px' },
+        h('summary', { style: 'cursor:pointer;font-weight:600' }, `Vendas de clientes SEM cartão fidelidade (${outras.length})`),
+        h('p', { class: 'suave pequeno', style: 'margin:8px 0' }, 'Só entram no Club se você quiser: abra a venda e lance (o cliente é cadastrado).'),
+        outras.map((x) => cartaoVenda(x))) : null);
+  }
+
+  function cartaoVenda(v) {
+    const cartao = h('div', { class: 'cartao venda' });
+    const marcados = new Set(v.itens.map((i, k) => (i.promocional ? null : k)).filter((k) => k != null));
+    const g = v.clienteAcker?.giftback || null;
+    const usar = h('input', { type: 'checkbox' });
+    const previa = h('div', {});
+    const fTel = h('input', { type: 'tel', class: 'entrada', style: 'max-width:200px', value: v.telefone ? M.formatarTelefone(v.telefone) : '', placeholder: 'WhatsApp do cliente' });
+    const acoes = h('div', { class: 'linha-flex', style: 'margin-top:12px' });
+    let usarDecidido = false;
+
+    function recalcular() {
+      const base = M.baseDosItens(v.itens, marcados);
+      const agora = new Date(M.horaUniplus(v.hora, v.data));
+      if (!usarDecidido) usar.checked = M.descontoPareceGiftback(v.desconto_subtotal_centavos, g, base);
+      const uso = g && base > 0 ? M.podeUsarGiftback(g, base, agora) : { ok: false };
+      usar.disabled = !uso.ok;
+      if (!uso.ok) usar.checked = false;
+      trocar(previa,
+        h('div', { class: 'conta' },
+          h('span', {}, 'Base do giftback (itens marcados)'), h('span', { class: 'direita' }, M.formatarReais(base)),
+          v.desconto_subtotal_centavos ? [h('span', {}, 'Desconto dado no PDV'), h('span', { class: 'direita' }, '− ' + M.formatarReais(v.desconto_subtotal_centavos))] : null,
+          h('span', {}, 'Total pago no PDV'), h('span', { class: 'direita' }, M.formatarReais(v.valor_liquido_centavos))),
+        g ? h('label', { class: 'usar' + (uso.ok ? '' : ' suave') }, usar,
+          `O cliente usou o giftback de ${valorGift(g)} nesta compra`,
+          !uso.ok && g.minimoCentavos ? ` (não dá: compra mínima ${M.formatarReais(g.minimoCentavos)})` : '') : null);
+      if (base <= 0) { previa.append(h('div', { class: 'caixa-info cinza' }, 'Nenhum item marcado: esta venda não gera giftback.')); return; }
+      try {
+        const r = M.calcularCompra({ valorCentavos: base, giftbackAtivo: g, usarGiftback: usar.checked, config, agora });
+        previa.append(r.novoGiftback
+          ? h('div', { class: 'caixa-info verde' }, 'Vai ganhar ', h('b', {}, M.formatarReais(r.novoGiftback.valorCentavos)), ` de giftback, válido até ${dia(r.novoGiftback.expiraEm)}.`)
+          : r.novoDescartado
+            ? h('div', { class: 'caixa-info verde' }, `Continua com o giftback atual de ${valorGift(g)} (maior que o desta compra).`)
+            : h('div', { class: 'caixa-info cinza' }, `Valor final abaixo de ${M.formatarReais(config.compraMinimaCentavos)}: não gera giftback.`));
+      } catch (e) { previa.append(h('div', { class: 'caixa-info vermelha' }, e.message)); }
+    }
+    usar.addEventListener('change', () => { usarDecidido = true; recalcular(); });
+
+    const linhas = v.itens.map((i, k) => {
+      const caixa = h('input', { type: 'checkbox', checked: marcados.has(k), onchange: (e) => { if (e.target.checked) marcados.add(k); else marcados.delete(k); recalcular(); } });
+      return h('tr', { class: i.promocional ? 'promo' : '' },
+        h('td', {}, caixa),
+        h('td', {}, i.nome, i.promocional ? h('span', { class: 'etiqueta ambar', style: 'margin-left:6px' }, `promoção (cadastro ${M.formatarReais(i.precoCadastroCentavos)})`) : null),
+        h('td', { class: 'num' }, String(i.quantidade).replace('.', ',')),
+        h('td', { class: 'num' }, M.formatarReais(i.totalCentavos)));
+    });
+
+    const lancar = () => tentar(async () => {
+      const base = M.baseDosItens(v.itens, marcados);
+      if (base <= 0) throw new Error('Marque pelo menos um item, ou clique em Ignorar.');
+      let clienteId = v.clienteAcker?.id;
+      if (!clienteId) {
+        const tel = M.normalizarTelefone(fTel.value);
+        if (!tel) throw new Error('Informe o WhatsApp do cliente para cadastrar no Club.');
+        const existente = await dados.clientePorTelefone(tel);
+        if (existente) clienteId = existente.id;
+        else {
+          const partes = v.cliente.nome.trim().split(/\s+/);
+          const novo = await dados.criarCliente({ nome: partes[0], sobrenome: partes.slice(1).join(' '), telefone: tel, cpf: v.cliente.cpf || null, uniplusCodigo: v.cliente.codigo || null });
+          clienteId = novo.id;
+        }
+      }
+      const excluidos = v.itens.filter((_, k) => !marcados.has(k)).map((i) => ({ codigo: i.codigo, nome: i.nome, totalCentavos: i.totalCentavos, promocional: i.promocional }));
+      const r = await dados.lancarCompra({
+        clienteId, valorCentavos: base, usarGiftback: usar.checked && !usar.disabled,
+        data: M.horaUniplus(v.hora, v.data), uniplusOperacaoId: v.operacao_id, itensExcluidos: excluidos.length ? excluidos : null,
+      });
+      vendasUniplus = vendasUniplus.filter((x) => x.operacao_id !== v.operacao_id);
+      const area = h('div', { class: 'lancar' });
+      trocar(cartao, h('div', { class: 'linha-flex' }, h('b', {}, nomeCompleto(r.cliente)), h('span', { class: 'etiqueta verde' }, 'Lançada ✓')), area);
+      desenharSucesso(area, r, r.cliente, () => cartao.remove(), () => {});
+      await atualizarContador();
+    });
+    const ignorar = () => tentar(async () => {
+      await dados.ignorarVendaUniplus(v.operacao_id, 'ignorada na revisão');
+      vendasUniplus = vendasUniplus.filter((x) => x.operacao_id !== v.operacao_id);
+      cartao.remove();
+      avisar('Venda ignorada.');
+    });
+
+    trocar(acoes,
+      h('button', { class: 'botao principal', onclick: lancar }, 'Lançar no Giftback Acker'),
+      h('button', { class: 'botao', onclick: ignorar }, 'Ignorar esta venda'));
+
+    cartao.append(
+      h('div', { class: 'linha-flex' },
+        h('b', { style: 'font-size:1.1rem' }, v.cliente.nome || 'Cliente sem nome'),
+        v.cliente.fidelidade ? h('span', { class: 'etiqueta verde' }, 'Cliente fidelidade') : h('span', { class: 'etiqueta cinza' }, 'Sem cartão fidelidade'),
+        v.clienteAcker ? h('span', { class: 'etiqueta azul' }, 'já está no Club') : h('span', { class: 'etiqueta ambar' }, 'cliente novo no Club'),
+        h('span', { class: 'espaco' }),
+        h('span', { class: 'suave pequeno' }, `${M.formatarDia(v.data)} ${String(v.hora || '').slice(11, 16)} · NFC-e ${String(v.nfce || '').replace(/^0+/, '')}`)),
+      !v.clienteAcker ? h('div', { class: 'linha-flex pequeno', style: 'margin-top:8px' }, 'WhatsApp para o cadastro:', fTel) : null,
+      v.clienteAcker && g ? h('div', { class: 'suave pequeno', style: 'margin-top:4px' }, `Giftback ativo: ${valorGift(g)} até ${dia(g.expiraEm)}`) : null,
+      h('div', { class: 'rolagem', style: 'margin-top:10px' }, h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, 'Conta'), h('th', {}, 'Item'), h('th', { class: 'num' }, 'Qtd'), h('th', { class: 'num' }, 'Valor'))),
+        h('tbody', {}, linhas))),
+      h('p', { class: 'suave pequeno', style: 'margin-top:6px' }, 'Itens em promoção (preço menor que o do cadastro) já vêm desmarcados. Desmarque qualquer outro que não deva contar.'),
+      previa, acoes);
+    recalcular();
+    return cartao;
+  }
+
+  trocar(tela,
+    h('h1', { class: 'titulo-tela' }, 'Vendas do PDV (Uniplus)'),
+    h('p', { class: 'suave', style: 'margin-bottom:12px' }, 'Puxa as vendas feitas no caixa com cliente identificado. Confira os itens, desmarque o que não conta para o giftback e lance com um clique. Cada venda só pode ser lançada uma vez.'),
+    h('div', { class: 'linha-flex' }, botao, dias),
+    situacao, lista);
+  if (vendasUniplus) desenharLista();
+}
+
 // ───────────────────────── CLIENTES ─────────────────────────
 
 async function telaClientes() {
@@ -672,7 +816,7 @@ async function depoisDoLogin() {
 
 // ───────────────────────── navegação ─────────────────────────
 
-const TELAS = { caixa: telaCaixa, mensagens: telaMensagens, clientes: telaClientes, config: telaConfig };
+const TELAS = { caixa: telaCaixa, mensagens: telaMensagens, uniplus: telaUniplus, clientes: telaClientes, config: telaConfig };
 
 function navegar() {
   const aba = (location.hash || '#caixa').slice(1);
@@ -690,6 +834,7 @@ async function abrirSistema() {
   await dados.iniciar();
   config = await dados.obterConfig();
   document.getElementById('modo').hidden = dados.modo !== 'teste';
+  document.getElementById('aba-uniplus').hidden = !dados.puxarVendasUniplus;
   if (sistemaAberto) { navegar(); atualizarContador(); return; }
   sistemaAberto = true;
 
@@ -709,13 +854,15 @@ async function abrirSistema() {
 
 async function iniciar() {
   if (MODO_TESTE) {
+    const lerArquivo = async (caminho) => {
+      try {
+        const r = await fetch(caminho, { cache: 'no-store' });
+        return r.ok ? await r.json() : null;
+      } catch { return null; }
+    };
     dados = criarDadosLocal({
-      carregarSeed: async () => {
-        try {
-          const r = await fetch('../dados_migrados/seed.json', { cache: 'no-store' });
-          return r.ok ? await r.json() : null;
-        } catch { return null; }
-      },
+      carregarSeed: () => lerArquivo('../dados_migrados/seed.json'),
+      carregarExemploUniplus: () => lerArquivo('../dados_migrados/uniplus_exemplo.json'),
     });
     return abrirSistema();
   }

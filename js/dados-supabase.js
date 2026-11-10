@@ -194,9 +194,9 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       return this.obterCliente(id);
     },
 
-    async lancarCompra({ clienteId, valorCentavos, usarGiftback = false }) {
+    async lancarCompra({ clienteId, valorCentavos, usarGiftback = false, data = null, uniplusOperacaoId = null, itensExcluidos = null }) {
       const config = configAtual();
-      const agora = relogio();
+      const agora = data ? new Date(data) : relogio(); // venda do Uniplus: vale a data/hora da venda
       const atual = await giftbackAtivoAgora(clienteId); // sempre do banco, nunca da tela
       const r = calcularCompra({ valorCentavos, giftbackAtivo: atual, usarGiftback, config, agora });
       const mensagens = r.novoGiftback
@@ -208,6 +208,9 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
           valor_centavos: valorCentavos, desconto_centavos: r.descontoCentavos, valor_final_centavos: r.valorFinalCentavos,
           novo: r.novoGiftback ? { valor_centavos: r.novoGiftback.valorCentavos, minimo_centavos: r.novoGiftback.minimoCentavos, expira_em: r.novoGiftback.expiraEm, prefixo: config.prefixoCodigo } : null,
           mensagens,
+          data: data ? agora.toISOString() : null,
+          uniplus_operacao_id: uniplusOperacaoId,
+          itens_excluidos: itensExcluidos,
         },
       }));
       const [c, novo, envio] = await Promise.all([
@@ -287,6 +290,45 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
         saldoCentavos: lista.reduce((s, g) => s + g.valorCentavos, 0),
         cuponsResgate: lista.filter((g) => g.tipo === 'resgate').length,
       };
+    },
+
+    // ───────────── vendas do Uniplus (Edge Function gb-uniplus) ─────────────
+    /**
+     * Busca as vendas recentes no Uniplus e devolve só as que ainda não foram lançadas nem ignoradas,
+     * já com o cliente do Giftback Acker correspondente (pelo celular ou CPF), se existir.
+     */
+    async puxarVendasUniplus(dias = 3) {
+      const cfg = ok(await supabase.from('gb_config').select('valor').eq('chave', 'uniplus'))[0]?.valor || {};
+      const { data, error } = await supabase.functions.invoke('gb-uniplus', { body: { dias, chute_id: cfg.ultimo_id || 49000 } });
+      if (error) {
+        let msg = error.message;
+        try { msg = (await error.context.json()).erro || msg; } catch { /* sem corpo */ }
+        if (/401|Unauthorized|JWT/i.test(msg)) msg = 'O Supabase recusou o login na função gb-uniplus. Veja docs/06-uniplus-vendas.md (configuração "Verify JWT").';
+        throw new Error(msg);
+      }
+      if (data?.erro) throw new Error(data.erro);
+      ok(await supabase.from('gb_config').upsert({ chave: 'uniplus', valor: { ...cfg, ultimo_id: data.ultimo_id, ultima_busca: new Date().toISOString() } }));
+      const ids = data.vendas.map((v) => v.operacao_id);
+      const [lancadas, ignoradas] = ids.length ? await Promise.all([
+        supabase.from('gb_compras').select('uniplus_operacao_id').in('uniplus_operacao_id', ids).then(ok),
+        supabase.from('gb_uniplus_ignoradas').select('operacao_id').in('operacao_id', ids).then(ok),
+      ]) : [[], []];
+      const fora = new Set([...lancadas.map((x) => Number(x.uniplus_operacao_id)), ...ignoradas.map((x) => Number(x.operacao_id))]);
+      await recarregar();
+      const porTelefone = new Map(resumos.map((r) => [r.telefone, r]));
+      const porCpf = new Map(resumos.filter((r) => r.cpf).map((r) => [String(r.cpf).replace(/\D/g, ''), r]));
+      return data.vendas
+        .filter((v) => !fora.has(Number(v.operacao_id)))
+        .map((v) => {
+          const tel = normalizarTelefone(v.cliente.celular);
+          const r = (v.cliente.cpf && porCpf.get(v.cliente.cpf)) || (tel && porTelefone.get(tel)) || null;
+          return { ...v, telefone: tel, clienteAcker: r ? resumo(r) : null };
+        })
+        .sort((a, b) => String(b.hora).localeCompare(String(a.hora)));
+    },
+
+    async ignorarVendaUniplus(operacaoId, motivo = null) {
+      ok(await supabase.from('gb_uniplus_ignoradas').upsert({ operacao_id: operacaoId, motivo }));
     },
 
     // ───────────── importação da Zoppy (arquivo dados_migrados/seed.json) ─────────────

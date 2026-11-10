@@ -286,6 +286,30 @@ export function montarMensagem(modelo, { cliente, giftback, config = CONFIG_PADR
 }
 
 /**
+ * Venda vinda do Uniplus: soma dos itens marcados para contar no giftback (valor de cada item
+ * ANTES do desconto dado no subtotal, que normalmente é o próprio giftback).
+ * @param itens [{totalCentavos, promocional}]   @param marcados Set de índices que contam (padrão: os não promocionais)
+ */
+export function baseDosItens(itens, marcados = null) {
+  let base = 0;
+  itens.forEach((i, k) => { if (marcados ? marcados.has(k) : !i.promocional) base += i.totalCentavos; });
+  return base;
+}
+
+/** O desconto dado no PDV parece ser o giftback do cliente? (diferença de até R$ 0,10) */
+export function descontoPareceGiftback(descontoCentavos, giftback, baseCentavos) {
+  if (!giftback || !descontoCentavos) return false;
+  const esperado = giftback.percentual ? Math.round(baseCentavos * giftback.percentual / 100) : giftback.valorCentavos;
+  return Math.abs(descontoCentavos - esperado) <= 10;
+}
+
+/** Hora do Uniplus ('2026-11-09T15:28:52.193', sem fuso) -> ISO com fuso de Brasília. */
+export function horaUniplus(hora, dia) {
+  const base = hora ? String(hora).slice(0, 19) : `${dia}T12:00:00`;
+  return new Date(`${base}-03:00`).toISOString();
+}
+
+/**
  * Organiza a fila do dia. Recebe as mensagens pendentes já vencidas (devidaEm <= hoje), cada uma com
  * {id, tipo, devidaEm, giftback, cliente}, e devolve UMA por giftback: a mais recente.
  * As mais antigas do mesmo giftback (ex.: lembrete atrasado quando já é dia do aviso final) vão em

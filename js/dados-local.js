@@ -11,7 +11,7 @@ import {
 
 const CHAVE = 'giftback-acker-teste-v1';
 
-export function criarDadosLocal({ armazenamento = globalThis.localStorage, carregarSeed, relogio = () => new Date() } = {}) {
+export function criarDadosLocal({ armazenamento = globalThis.localStorage, carregarSeed, carregarExemploUniplus = null, relogio = () => new Date() } = {}) {
   let estado = null;
 
   const novoId = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
@@ -169,12 +169,15 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
      * Registra a compra: dá baixa no giftback usado, cria o novo (se a compra der direito)
      * e agenda as mensagens. Devolve tudo que a tela precisa mostrar.
      */
-    async lancarCompra({ clienteId, valorCentavos, usarGiftback = false }) {
+    async lancarCompra({ clienteId, valorCentavos, usarGiftback = false, data = null, uniplusOperacaoId = null, itensExcluidos = null }) {
       expirarVencidos();
       const cliente = clientePorId(clienteId);
       if (!cliente) throw new Error('Cliente não encontrado.');
+      if (uniplusOperacaoId != null && estado.compras.some((c) => c.uniplusOperacaoId === uniplusOperacaoId && c.status === 'ok')) {
+        throw new Error('Esta venda do Uniplus já foi lançada.');
+      }
       const config = configAtual();
-      const agora = relogio();
+      const agora = data ? new Date(data) : relogio();
       const atual = giftbackAtivoDe(clienteId);
       const r = calcularCompra({ valorCentavos, giftbackAtivo: atual, usarGiftback, config, agora });
 
@@ -183,7 +186,8 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
         descontoCentavos: r.descontoCentavos, valorFinalCentavos: r.valorFinalCentavos,
         codigoUsado: usarGiftback ? atual.codigo : null,
         giftbackUsadoId: null, giftbackGeradoId: null, giftbackSubstituidoId: null,
-        status: 'ok', origem: 'acker',
+        status: 'ok', origem: uniplusOperacaoId != null ? 'uniplus' : 'acker',
+        uniplusOperacaoId, itensExcluidos,
       };
 
       if (atual && r.giftbackAnterior === 'usado') {
@@ -290,6 +294,28 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
         if (status === 'pendente') { if (s.status === 'pulada' && s.motivo === 'substituída') { s.status = 'pendente'; delete s.motivo; } }
         else if (s.status === 'pendente') { s.status = 'pulada'; s.motivo = 'substituída'; }
       }
+      salvar();
+    },
+
+    // Modo teste: "vendas do PDV" vêm de um arquivo de exemplo (dados_migrados/uniplus_exemplo.json).
+    async puxarVendasUniplus() {
+      const exemplo = carregarExemploUniplus ? await carregarExemploUniplus() : null;
+      if (!exemplo) throw new Error('Sem arquivo de exemplo (dados_migrados/uniplus_exemplo.json) no modo teste.');
+      const fora = new Set([
+        ...estado.compras.filter((c) => c.status === 'ok' && c.uniplusOperacaoId != null).map((c) => c.uniplusOperacaoId),
+        ...(estado.ignoradas || []),
+      ]);
+      return exemplo.vendas
+        .filter((v) => !fora.has(v.operacao_id))
+        .map((v) => {
+          const tel = normalizarTelefone(v.cliente.celular);
+          const c = (tel && estado.clientes.find((x) => x.telefone === tel)) || (v.cliente.cpf && estado.clientes.find((x) => x.cpf === v.cliente.cpf)) || null;
+          return { ...v, telefone: tel, clienteAcker: c ? resumoCliente(c) : null };
+        });
+    },
+
+    async ignorarVendaUniplus(operacaoId) {
+      estado.ignoradas = [...(estado.ignoradas || []), operacaoId];
       salvar();
     },
 

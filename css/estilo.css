@@ -162,6 +162,11 @@ tr.cancelada td { color: #9aa29c; text-decoration: line-through; }
 .numero.alerta b { color: var(--vermelho); }
 .msg.atrasada { border-left: 5px solid #e0452b; }
 
+/* Vendas do PDV */
+.venda + .venda { margin-top: 12px; }
+tr.promo td { background: #fff8e8; }
+.usar.suave { color: var(--texto-suave); }
+
 /* Mensagens */
 .msg { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; align-items: start; }
 .msg + .msg { margin-top: 12px; }
