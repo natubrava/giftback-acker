@@ -150,6 +150,16 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
       return resumoCliente(c);
     },
 
+    /** Apaga o cliente e TODO o histórico dele (compras, giftbacks, mensagens). Não tem volta. */
+    async excluirCliente(id) {
+      if (!clientePorId(id)) throw new Error('Cliente não encontrado.');
+      estado.clientes = estado.clientes.filter((c) => c.id !== id);
+      estado.compras = estado.compras.filter((c) => c.clienteId !== id);
+      estado.giftbacks = estado.giftbacks.filter((g) => g.clienteId !== id);
+      estado.mensagens = estado.mensagens.filter((m) => m.clienteId !== id);
+      salvar();
+    },
+
     async atualizarCliente(id, dados) {
       const c = clientePorId(id);
       if (!c) throw new Error('Cliente não encontrado.');

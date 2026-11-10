@@ -511,7 +511,22 @@ function editarCliente(painel, c, depois) {
       h('label', { class: 'campo' }, h('span', {}, 'Nascimento (opcional)'), fNasc)),
     h('div', { class: 'linha-flex', style: 'margin-top:14px' },
       h('button', { class: 'botao principal', type: 'submit' }, 'Salvar'),
-      h('button', { class: 'botao', type: 'button', onclick: depois }, 'Cancelar'))));
+      h('button', { class: 'botao', type: 'button', onclick: depois }, 'Cancelar'),
+      h('span', { class: 'espaco' }),
+      h('button', { class: 'botao perigo', type: 'button', onclick: () => tentar(async () => {
+        const nome = nomeCompleto(c);
+        const resp = prompt(`Excluir ${nome} e TODO o histórico (compras, giftbacks e mensagens)?
+Isso não tem volta.
+
+Para confirmar, digite: EXCLUIR`);
+        if (resp == null) return;
+        if (resp.trim().toUpperCase() !== 'EXCLUIR') { avisar('Nada foi excluído.'); return; }
+        await dados.excluirCliente(c.id);
+        estado.clienteId = null; estado.resultadoCompra = null; estado.busca = '';
+        avisar(`${nome} foi excluído.`);
+        await atualizarContador();
+        telaCaixa();
+      }) }, 'Excluir cliente'))));
 }
 
 // ───────────────────────── MENSAGENS ─────────────────────────

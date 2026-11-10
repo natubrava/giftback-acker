@@ -182,6 +182,14 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       return resumo(linha);
     },
 
+    /** Apaga o cliente e TODO o histórico dele (o banco apaga compras, giftbacks e mensagens junto). */
+    async excluirCliente(id) {
+      const apagados = ok(await supabase.from('gb_clientes').delete().eq('id', id).select('id'));
+      if (!apagados?.length) throw new Error('Cliente não encontrado (ou sem permissão).');
+      resumos = resumos.filter((r) => r.id !== id);
+      ativos.delete(id);
+    },
+
     async atualizarCliente(id, dados) {
       const mudar = {};
       if (dados.telefone != null) {
