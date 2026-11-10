@@ -4,7 +4,7 @@
 // Fonte das regras: docs/01-contexto-e-decisoes.md
 
 export const CONFIG_PADRAO = Object.freeze({
-  percentual: 7, // % do valor final da compra que vira giftback
+  percentual: 5, // % do valor final da compra que vira giftback (padrão 5%, decisão do Jacson em 2026-11-10; pode mudar por venda no caixa)
   compraMinimaCentavos: 5000, // valor final mínimo para GANHAR giftback (R$ 50,00)
   validadeDias: 45, // dias de validade do giftback
   multiploUsoMinimo: 5, // para USAR, a compra precisa ser >= 5x o giftback
@@ -30,14 +30,79 @@ export const CONFIG_PADRAO = Object.freeze({
       'Você ainda tem *{valor}* de cashback aqui na {loja}, mas ele vence *{prazo}* ({validade})! 😱\n\n' +
       'Para resgatar, basta informar o código *{codigo}* no caixa na sua próxima compra (compra mínima de {minimo}).\n\n' +
       'Corre aproveitar! 🌿💚',
+    // Os 3 abaixo eram usados na Zoppy; ainda não são automáticos aqui (fase 2), mas o texto já fica guardado.
+    aniversario:
+      'Oi {primeiro_nome}, aqui é o Jacson da {loja}! 🎉\n' +
+      'Hoje é um dia especial e não poderíamos deixar passar em branco.\n\n' +
+      'Preparamos um presente pra você: *{valor}* de desconto para usar na loja.\n' +
+      'Informe o código *{codigo}* no caixa até {validade}\n' +
+      '(compra mínima de {minimo}).\n\n' +
+      'Feliz aniversário e esperamos você! 🌿🎂',
+    recompra90:
+      'Ei, {primeiro_nome}! 👋 Sentimos sua falta na {loja} e temos uma surpresa exclusiva esperando por você! 🎉\n' +
+      'Para você ficar por dentro de todas as novidades, liberamos um presente especial: *{valor}* de desconto com o código *{codigo}*.\n' +
+      'Use até {validade}, diretamente no caixa (compra mínima de {minimo}).\n\n' +
+      'Esperamos você! 🌱',
+    recompra180:
+      'Oi, {primeiro_nome}! 👋 Você se esqueceu da gente?😢\n' +
+      'Faz um tempinho que você não aparece, e sentimos sua falta!\n' +
+      'Por isso, temos uma surpresa especial só pra você: {valor} de desconto na sua próxima compra com o cupom {codigo}! 🎁 Válido até {validade}\n' +
+      'Aproveite para voltar e escolher seus produtos favoritos! Estamos esperando por você. 😊\n' +
+      'Um abraço!',
   }),
+  // Assinatura colocada no fim de toda mensagem (como era na Zoppy). Deixe vazio para não usar.
+  rodape: '💬 Dúvidas? É só responder por aqui — você está falando com a *{loja}*.',
+  // Modelos de campanha (envio manual para um grupo de clientes). Vieram das campanhas feitas na Zoppy.
+  campanhas: Object.freeze([
+    Object.freeze({
+      id: 'resgate-90d',
+      nome: 'Resgate 90 dias sem comprar (10% de desconto)',
+      texto:
+        'Olá, {primeiro_nome}!\n' +
+        'Sentimos sua falta na {loja}.\n\n' +
+        'Você ganhou *10% de desconto* em itens não promocionais para usar na loja física.\n\n' +
+        '📍 Estamos na Av. Osvaldo Reis, 3547 Praia Brava, Itajaí-SC (ao lado do Supermercado De Angelina)\n\n' +
+        'Válido por 15 dias.\n' +
+        'Não cumulativo com outras promoções ou cupons.',
+    }),
+    Object.freeze({
+      id: 'club-60d',
+      nome: 'Club NatuBrava: acima de 60 dias sem comprar (10%)',
+      texto:
+        'Olá, {primeiro_nome}! 👋\n' +
+        'Aqui é da *{loja}* e temos uma surpresa exclusiva para quem é *Club NatuBrava* esperando por você! 🎉\n\n' +
+        '*Você tem 10% de desconto* em itens não promocionais.\n\n' +
+        'Como usar:\n' +
+        '- Apresente esta mensagem no caixa.\n' +
+        '- *Validade: até {data_limite}*\n' +
+        '- Uso único em seu nome (não cumulativo com outras promoções)\n\n' +
+        'Esperamos você! 🌱',
+    }),
+  ]),
 });
 
 export const TIPOS_MENSAGEM = Object.freeze({
   envio: 'Giftback novo',
   lembrete: 'Lembrete',
   vencendo: 'Vence em breve',
+  aniversario: 'Aniversário',
+  recompra90: 'Recompra 90 dias',
+  recompra180: 'Recompra 180 dias',
 });
+
+/** Variáveis que podem ser usadas nos textos, com o que significam (para a tela de modelos). */
+export const VARIAVEIS_MENSAGEM = Object.freeze([
+  ['{primeiro_nome}', 'primeiro nome do cliente'],
+  ['{nome}', 'nome completo'],
+  ['{valor}', 'valor do giftback'],
+  ['{codigo}', 'código do giftback'],
+  ['{validade}', 'data em que vence'],
+  ['{prazo}', '"hoje", "amanhã", "em 2 dias" (calculado no dia do envio)'],
+  ['{dias_restantes}', 'quantos dias faltam'],
+  ['{minimo}', 'compra mínima para usar'],
+  ['{loja}', 'nome da loja'],
+  ['{data_limite}', 'data limite de uma campanha'],
+]);
 
 // ───────────────────────── Datas (fuso de Brasília, UTC-3 fixo) ─────────────────────────
 
@@ -335,6 +400,16 @@ export function organizarFila(pendentes, hoje) {
   return fila.sort((a, b) =>
     (b.diasAtraso - a.diasAtraso) || (ordemTipo[a.tipo] ?? 9) - (ordemTipo[b.tipo] ?? 9)
     || String(a.giftback?.expiraEm).localeCompare(String(b.giftback?.expiraEm)));
+}
+
+/** Texto pronto para enviar: o modelo do tipo + a assinatura (rodapé). */
+export function mensagemCompleta(tipoOuTexto, { cliente, giftback = null, config = CONFIG_PADRAO, hoje = diaSP(new Date()), extras = {} }) {
+  const modelo = config.modelos?.[tipoOuTexto] ?? tipoOuTexto;
+  let texto = montarMensagem(modelo, { cliente, giftback, config, hoje });
+  for (const [k, v] of Object.entries(extras)) texto = texto.split(`{${k}}`).join(v);
+  const rodape = String(config.rodape ?? '').trim();
+  if (rodape) texto = `${texto.trimEnd()}\n\n${montarMensagem(rodape, { cliente, giftback, config, hoje })}`;
+  return texto;
 }
 
 /**

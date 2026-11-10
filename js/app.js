@@ -112,6 +112,24 @@ async function atualizarContador() {
 setInterval(() => { atualizarContador().catch(() => {}); }, 10 * 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizarContador().catch(() => {}); });
 
+/** Campo "% de giftback desta venda": começa no padrão das Configurações e vale só para esta venda. */
+function campoPercentual(aoMudar) {
+  const campo = h('input', { type: 'number', class: 'pct', min: 0.5, max: 100, step: 0.5, value: config.percentual, 'aria-label': '% de giftback desta venda' });
+  const aviso = h('span', { class: 'suave pequeno' });
+  const valor = () => {
+    const n = Number(String(campo.value).replace(',', '.'));
+    return n > 0 && n <= 100 ? n : config.percentual;
+  };
+  const marcar = () => {
+    const mudou = valor() !== config.percentual;
+    campo.classList.toggle('alterado', mudou);
+    aviso.textContent = mudou ? `só nesta venda (padrão ${config.percentual}%)` : '';
+  };
+  campo.addEventListener('input', () => { marcar(); aoMudar(); });
+  const el = h('label', { class: 'linha-pct' }, 'Giftback desta venda:', campo, '%', aviso);
+  return { el, valor, configDaVenda: () => ({ ...config, percentual: valor() }), mudou: () => valor() !== config.percentual };
+}
+
 // ───────────────────────── CAIXA ─────────────────────────
 
 function telaCaixa() {
@@ -151,26 +169,53 @@ function telaCaixa() {
     if (e.key === 'Escape') { campo.value = ''; buscar(); }
   });
 
+  const fechar = () => { campo.value = ''; estado.busca = ''; estado.clienteId = null; trocar(painel); desenharResumoDoDia(painel); campo.focus(); };
+
   function abrirCliente(id) {
     estado.clienteId = id; estado.resultadoCompra = null;
     trocar(resultados);
-    painelCliente(painel, () => { campo.value = ''; estado.busca = ''; estado.clienteId = null; trocar(painel); campo.focus(); });
+    painelCliente(painel, fechar);
   }
 
   function abrirNovo(prefill = {}) {
     estado.clienteId = null;
     trocar(resultados);
-    painelNovoCliente(painel, prefill, (c) => abrirCliente(c.id), () => { trocar(painel); campo.focus(); });
+    painelNovoCliente(painel, prefill, (c) => abrirCliente(c.id), fechar);
   }
 
   trocar(tela,
+    h('h1', { class: 'titulo-tela' }, 'Caixa'),
     h('div', { class: 'busca' }, campo, h('button', { class: 'botao', onclick: () => abrirNovo() }, '+ Cliente novo')),
     resultados, painel);
+  if (!estado.clienteId && !estado.busca && !estado.novoPrefill) desenharResumoDoDia(painel);
 
-  if (estado.clienteId) painelCliente(painel, () => { campo.value = ''; estado.busca = ''; estado.clienteId = null; trocar(painel); campo.focus(); });
+  if (estado.clienteId) painelCliente(painel, fechar);
   else if (estado.busca) buscar().then(() => { if (estado.abrirUnico && lista.length === 1) abrirCliente(lista[0].id); estado.abrirUnico = false; });
   if (estado.novoPrefill) { const p = estado.novoPrefill; estado.novoPrefill = null; abrirNovo(p); }
   else if (!estado.clienteId) campo.focus();
+}
+
+/** Resumo do dia na tela do caixa (aparece quando nenhum cliente está aberto). */
+async function desenharResumoDoDia(painel) {
+  if (!dados.resumoDoDia) return;
+  let r;
+  try { r = await dados.resumoDoDia(); } catch { return; }
+  if (estado.clienteId || painel.childElementCount) return; // o usuário já abriu um cliente
+  const fila = (await dados.filaMensagens().catch(() => [])).length;
+  trocar(painel,
+    h('div', { class: 'numeros' },
+      h('div', { class: 'numero' }, h('b', {}, r.compras), h('span', {}, 'compras lançadas hoje')),
+      h('div', { class: 'numero' }, h('b', {}, M.formatarReais(r.totalCentavos)), h('span', {}, 'valor lançado hoje')),
+      h('div', { class: 'numero' }, h('b', {}, r.giftbacksGerados), h('span', {}, 'giftbacks gerados hoje')),
+      h('a', { class: 'numero' + (fila ? ' alerta' : ''), href: '#mensagens', style: 'text-decoration:none;color:inherit' }, h('b', {}, fila), h('span', {}, 'mensagens para enviar'))),
+    r.ultimas.length ? h('div', { class: 'cartao' },
+      h('h3', { style: 'margin-bottom:8px' }, 'Últimas compras de hoje'),
+      h('table', {}, h('tbody', {}, r.ultimas.map((c) => h('tr', { class: 'clicavel', onclick: () => { estado.clienteId = c.clienteId; estado.resultadoCompra = null; telaCaixa(); } },
+        h('td', {}, String(c.data).slice(11, 16) ? new Date(c.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''),
+        h('td', {}, c.cliente ? `${c.cliente.nome ?? ''} ${c.cliente.sobrenome ?? ''}`.trim() : ''),
+        h('td', { class: 'num' }, M.formatarReais(c.valorFinalCentavos)),
+        h('td', {}, c.giftbackUsadoId ? h('span', { class: 'etiqueta azul' }, 'usou giftback') : ''))))))
+      : h('p', { class: 'suave', style: 'text-align:center;margin-top:18px' }, 'Busque o cliente pelo nome, celular ou código do giftback para lançar a compra.'));
 }
 
 function painelNovoCliente(painel, prefill, aoSalvar, aoCancelar) {
@@ -269,6 +314,7 @@ function desenharFormulario(area, cliente, g, redesenhar) {
   const previa = h('div', { class: 'previa' });
   const confirmar = h('button', { class: 'botao principal grande', disabled: true }, 'Confirmar compra');
   let usar = null; // null = ainda não decidiu (segue o padrão: usar sempre que puder)
+  const pct = campoPercentual(() => atualizar());
 
   function atualizar() {
     const valor = M.lerReais(fValor.value);
@@ -277,7 +323,7 @@ function desenharFormulario(area, cliente, g, redesenhar) {
     if (!valor || valor <= 0) return;
     const uso = M.podeUsarGiftback(g, valor, new Date());
     const vaiUsar = uso.ok && (usar ?? true);
-    const r = M.calcularCompra({ valorCentavos: valor, giftbackAtivo: g, usarGiftback: vaiUsar, config, agora: new Date() });
+    const r = M.calcularCompra({ valorCentavos: valor, giftbackAtivo: g, usarGiftback: vaiUsar, config: pct.configDaVenda(), agora: new Date() });
 
     if (g && uso.ok) {
       const marca = h('input', { type: 'checkbox', checked: vaiUsar, onchange: (e) => { usar = e.target.checked; atualizar(); } });
@@ -294,7 +340,7 @@ function desenharFormulario(area, cliente, g, redesenhar) {
     }
     if (r.novoGiftback) {
       previa.append(h('div', { class: 'caixa-info verde' }, 'Vai ganhar ', h('b', {}, M.formatarReais(r.novoGiftback.valorCentavos)),
-        ` de giftback, válido até ${dia(r.novoGiftback.expiraEm)}.`));
+        ` de giftback (${pct.valor()}%), válido até ${dia(r.novoGiftback.expiraEm)}.`));
     } else if (r.novoDescartado) {
       previa.append(h('div', { class: 'caixa-info verde' }, `O cliente continua com o giftback atual de ${valorGift(g)}, que é maior que o desta compra (${M.formatarReais(r.novoDescartado.valorCentavos)}). Giftback não acumula: fica sempre o maior.`));
     } else {
@@ -306,7 +352,7 @@ function desenharFormulario(area, cliente, g, redesenhar) {
     confirmar.disabled = false;
     confirmar.onclick = () => tentar(async () => {
       confirmar.disabled = true;
-      estado.resultadoCompra = await dados.lancarCompra({ clienteId: cliente.id, valorCentavos: valor, usarGiftback: vaiUsar });
+      estado.resultadoCompra = await dados.lancarCompra({ clienteId: cliente.id, valorCentavos: valor, usarGiftback: vaiUsar, percentual: pct.mudou() ? pct.valor() : null });
       await atualizarContador();
       redesenhar();
     });
@@ -319,6 +365,7 @@ function desenharFormulario(area, cliente, g, redesenhar) {
     h('h3', {}, 'Lançar compra'),
     h('p', { class: 'suave pequeno', style: 'margin-bottom:8px' }, 'Digite só o valor dos produtos que NÃO estão em promoção.'),
     h('div', { class: 'valor-linha' }, h('span', { class: 'prefixo' }, 'R$'), fValor, confirmar),
+    pct.el,
     previa);
   fValor.focus();
 }
@@ -332,7 +379,7 @@ function desenharSucesso(area, r, cliente, aoFechar, redesenhar) {
       h('div', { class: 'suave pequeno' }, `Cliente paga ${M.formatarReais(r.compra.valorFinalCentavos)}. Giftback ${r.giftbackUsado.codigo} baixado.`))));
   }
   if (r.novoGiftback) {
-    const texto = M.montarMensagem(config.modelos.envio, { cliente, giftback: r.novoGiftback, config });
+    const texto = M.mensagemCompleta('envio', { cliente, giftback: r.novoGiftback, config });
     const botao = h('button', { class: 'botao whats grande' }, 'Enviar giftback pelo WhatsApp');
     const situacao = h('span', { class: 'suave pequeno' });
     botao.onclick = () => tentar(async () => {
@@ -403,7 +450,7 @@ async function telaMensagens() {
   const [fila, proximas, enviadas] = await Promise.all([dados.filaMensagens(), dados.proximasMensagens(7), dados.enviadasHoje()]);
   const etiquetas = { envio: 'verde', lembrete: 'azul', vencendo: 'ambar' };
   const atrasadas = fila.filter((m) => m.atrasada).length;
-  const textoAgora = (m) => M.montarMensagem(config.modelos[m.tipo], { cliente: m.cliente, giftback: m.giftback, config, hoje: hoje() });
+  const textoAgora = (m) => M.mensagemCompleta(m.tipo, { cliente: m.cliente, giftback: m.giftback, config, hoje: hoje() });
 
   const itens = fila.map((m) => {
     const cartao = h('div', { class: 'cartao msg' + (m.atrasada ? ' atrasada' : '') });
@@ -504,6 +551,7 @@ async function telaUniplus() {
     const fTel = h('input', { type: 'tel', class: 'entrada', style: 'max-width:200px', value: v.telefone ? M.formatarTelefone(v.telefone) : '', placeholder: 'WhatsApp do cliente' });
     const acoes = h('div', { class: 'linha-flex', style: 'margin-top:12px' });
     let usarDecidido = false;
+    const pct = campoPercentual(() => recalcular());
 
     function recalcular() {
       const base = M.baseDosItens(v.itens, marcados);
@@ -522,7 +570,7 @@ async function telaUniplus() {
           !uso.ok && g.minimoCentavos ? ` (não dá: compra mínima ${M.formatarReais(g.minimoCentavos)})` : '') : null);
       if (base <= 0) { previa.append(h('div', { class: 'caixa-info cinza' }, 'Nenhum item marcado: esta venda não gera giftback.')); return; }
       try {
-        const r = M.calcularCompra({ valorCentavos: base, giftbackAtivo: g, usarGiftback: usar.checked, config, agora });
+        const r = M.calcularCompra({ valorCentavos: base, giftbackAtivo: g, usarGiftback: usar.checked, config: pct.configDaVenda(), agora });
         previa.append(r.novoGiftback
           ? h('div', { class: 'caixa-info verde' }, 'Vai ganhar ', h('b', {}, M.formatarReais(r.novoGiftback.valorCentavos)), ` de giftback, válido até ${dia(r.novoGiftback.expiraEm)}.`)
           : r.novoDescartado
@@ -560,6 +608,7 @@ async function telaUniplus() {
       const r = await dados.lancarCompra({
         clienteId, valorCentavos: base, usarGiftback: usar.checked && !usar.disabled,
         data: M.horaUniplus(v.hora, v.data), uniplusOperacaoId: v.operacao_id, itensExcluidos: excluidos.length ? excluidos : null,
+        percentual: pct.mudou() ? pct.valor() : null,
       });
       vendasUniplus = vendasUniplus.filter((x) => x.operacao_id !== v.operacao_id);
       const area = h('div', { class: 'lancar' });
@@ -591,7 +640,7 @@ async function telaUniplus() {
         h('thead', {}, h('tr', {}, h('th', {}, 'Conta'), h('th', {}, 'Item'), h('th', { class: 'num' }, 'Qtd'), h('th', { class: 'num' }, 'Valor'))),
         h('tbody', {}, linhas))),
       h('p', { class: 'suave pequeno', style: 'margin-top:6px' }, 'Itens em promoção (preço menor que o do cadastro) já vêm desmarcados. Desmarque qualquer outro que não deva contar.'),
-      previa, acoes);
+      pct.el, previa, acoes);
     recalcular();
     return cartao;
   }
@@ -648,6 +697,16 @@ async function telaClientes() {
 
 async function telaConfig() {
   config = await dados.obterConfig();
+  const secoes = [['regras', 'Regras do giftback'], ['modelos', 'Modelos de mensagem'], ['dados', dados.modo === 'online' ? 'Dados' : 'Modo teste']];
+  const atual = secoes.some(([id]) => id === estado.secaoConfig) ? estado.secaoConfig : 'regras';
+  const abas = h('div', { class: 'subabas' }, secoes.map(([id, nome]) =>
+    h('button', { class: 'subaba' + (id === atual ? ' ativa' : ''), type: 'button', onclick: () => { estado.secaoConfig = id; telaConfig(); } }, nome)));
+  const conteudo = atual === 'regras' ? configRegras() : atual === 'modelos' ? configModelos()
+    : (dados.modo === 'online' ? cartaoDadosOnline() : cartaoModoTeste());
+  trocar(tela, h('h1', { class: 'titulo-tela' }, 'Configurações'), abas, conteudo);
+}
+
+function configRegras() {
   const num = (valor, extra = {}) => h('input', { type: 'number', value: valor, min: 0, step: 'any', ...extra });
   const f = {
     percentual: num(config.percentual, { max: 100 }),
@@ -657,9 +716,6 @@ async function telaConfig() {
     lembrete: num(config.diasLembrete, { step: 1 }),
     avisoFinal: num(config.diasAntesAvisoFinal, { step: 1 }),
     loja: h('input', { type: 'text', value: config.nomeLoja }),
-    envio: h('textarea', { value: config.modelos.envio }),
-    lembreteTxt: h('textarea', { value: config.modelos.lembrete }),
-    vencendo: h('textarea', { value: config.modelos.vencendo }),
   };
   const exemplo = h('div', { class: 'caixa-info verde', style: 'margin-top:12px' });
   function atualizarExemplo() {
@@ -669,7 +725,6 @@ async function telaConfig() {
   }
   [f.percentual, f.multiplo, f.validade].forEach((el) => el.addEventListener('input', atualizarExemplo));
   atualizarExemplo();
-
   const salvar = () => tentar(async () => {
     const minimo = M.lerReais(f.minimo.value);
     const pct = Number(f.percentual.value);
@@ -680,42 +735,104 @@ async function telaConfig() {
       percentual: pct, compraMinimaCentavos: minimo, validadeDias: Math.round(Number(f.validade.value)),
       multiploUsoMinimo: Number(f.multiplo.value) || 1, diasLembrete: Math.round(Number(f.lembrete.value) || 0),
       diasAntesAvisoFinal: Math.round(Number(f.avisoFinal.value) || 0), nomeLoja: f.loja.value.trim() || M.CONFIG_PADRAO.nomeLoja,
-      modelos: { envio: f.envio.value, lembrete: f.lembreteTxt.value, vencendo: f.vencendo.value },
     });
-    avisar('Configurações salvas. Valem para as próximas compras.');
+    avisar('Regras salvas. Valem para as próximas compras.');
+  });
+  return h('form', { class: 'cartao', onsubmit: (e) => { e.preventDefault(); salvar(); } },
+    h('div', { class: 'grade' },
+      h('label', { class: 'campo' }, h('span', {}, 'Giftback padrão (% da compra)'), f.percentual),
+      h('label', { class: 'campo' }, h('span', {}, 'Compra mínima para ganhar (R$)'), f.minimo),
+      h('label', { class: 'campo' }, h('span', {}, 'Validade (dias)'), f.validade),
+      h('label', { class: 'campo' }, h('span', {}, 'Para usar: compra de quantas vezes o giftback'), f.multiplo),
+      h('label', { class: 'campo' }, h('span', {}, 'Lembrete após quantos dias'), f.lembrete),
+      h('label', { class: 'campo' }, h('span', {}, 'Aviso final: quantos dias antes de vencer'), f.avisoFinal),
+      h('label', { class: 'campo' }, h('span', {}, 'Nome da loja nas mensagens'), f.loja)),
+    exemplo,
+    h('p', { class: 'suave pequeno', style: 'margin-top:8px' }, 'O % pode ser mudado em cada venda, na tela do Caixa, sem alterar este padrão. Mudanças aqui valem para os giftbacks novos: os já gerados continuam como foram combinados com o cliente.'),
+    h('div', { class: 'linha-flex', style: 'margin-top:14px' }, h('button', { class: 'botao principal grande', type: 'submit' }, 'Salvar regras')));
+}
+
+function configModelos() {
+  const exemploCliente = { nome: 'Ana', sobrenome: 'Exemplo' };
+  const exemploGift = { valorCentavos: 500, minimoCentavos: 2500, codigo: 'natubravaabc23', expiraEm: M.fimDoDiaSP(M.somarDias(hoje(), 3)) };
+  const exemploExtras = { data_limite: M.formatarDia(M.somarDias(hoje(), 15)) };
+  const campos = {};
+  const previaDe = (area, tipoOuTexto) => {
+    const p = h('div', { class: 'msg-texto' });
+    const atualizar = () => { p.textContent = M.mensagemCompleta(area.value, { cliente: exemploCliente, giftback: exemploGift, config: { ...config, rodape: rodape.value }, hoje: hoje(), extras: exemploExtras }); };
+    area.addEventListener('input', atualizar);
+    return { p, atualizar };
+  };
+  const rodape = h('textarea', { value: config.rodape ?? '', style: 'min-height:60px' });
+  const previas = [];
+  const blocoModelo = (chave, titulo, explica, ativo) => {
+    const area = h('textarea', { value: config.modelos[chave] ?? '' });
+    campos[chave] = area;
+    const pv = previaDe(area);
+    previas.push(pv);
+    return h('div', { class: 'cartao modelo' },
+      h('div', { class: 'linha-flex' }, h('h3', {}, titulo), ativo ? h('span', { class: 'etiqueta verde' }, 'automática') : h('span', { class: 'etiqueta cinza' }, 'ainda não automática')),
+      h('p', { class: 'suave pequeno', style: 'margin:4px 0 8px' }, explica),
+      h('div', { class: 'grade-modelo' }, area, h('details', { open: false }, h('summary', {}, 'Ver como fica'), pv.p)));
+  };
+  const campanhas = (config.campanhas || []).map((c) => ({ ...c }));
+  const listaCampanhas = h('div', {});
+  function desenharCampanhas() {
+    trocar(listaCampanhas, campanhas.map((c, i) => {
+      const nome = h('input', { type: 'text', class: 'entrada', value: c.nome, oninput: (e) => { c.nome = e.target.value; } });
+      const area = h('textarea', { value: c.texto, oninput: (e) => { c.texto = e.target.value; } });
+      const pv = previaDe(area);
+      previas.push(pv);
+      pv.atualizar();
+      return h('div', { class: 'cartao modelo' },
+        h('div', { class: 'linha-flex' }, nome,
+          h('button', { class: 'botao', type: 'button', onclick: () => tentar(async () => { await navigator.clipboard.writeText(M.mensagemCompleta(c.texto, { cliente: { nome: '' }, config: { ...config, rodape: rodape.value } }).replace(/\{primeiro_nome\}|,\s*!/g, '')); avisar('Texto copiado.'); }) }, 'Copiar texto'),
+          h('button', { class: 'botao perigo', type: 'button', onclick: () => { if (confirm(`Remover o modelo "${c.nome}"?`)) { campanhas.splice(i, 1); desenharCampanhas(); } } }, 'Remover')),
+        h('div', { class: 'grade-modelo', style: 'margin-top:8px' }, area, h('details', {}, h('summary', {}, 'Ver como fica'), pv.p)));
+    }));
+  }
+  desenharCampanhas();
+
+  const salvar = () => tentar(async () => {
+    config = await dados.salvarConfig({
+      rodape: rodape.value,
+      modelos: Object.fromEntries(Object.entries(campos).map(([k, el]) => [k, el.value])),
+      campanhas: campanhas.filter((c) => c.nome.trim() && c.texto.trim()).map((c, i) => ({ id: c.id || `campanha-${Date.now()}-${i}`, nome: c.nome.trim(), texto: c.texto })),
+    });
+    avisar('Modelos salvos.');
   });
 
-  const variaveis = () => h('div', { class: 'variaveis' }, ['{primeiro_nome}', '{valor}', '{validade}', '{codigo}', '{minimo}', '{loja}'].map((v) => h('code', {}, v)));
+  const blocos = [
+    h('h2', { class: 'secao' }, 'Mensagens automáticas do giftback'),
+    blocoModelo('envio', '1. Giftback novo', 'Sai na hora da compra (botão no caixa) ou fica na fila de Mensagens.', true),
+    blocoModelo('lembrete', '2. Lembrete', `Entra na fila ${config.diasLembrete} dias depois da compra, se o giftback ainda não foi usado.`, true),
+    blocoModelo('vencendo', '3. Vence em breve', `Entra na fila ${config.diasAntesAvisoFinal} dias antes de vencer. Use {prazo} para "em 2 dias", "amanhã" ou "hoje", sempre certo no dia do envio.`, true),
+    h('h2', { class: 'secao' }, 'Outras mensagens (usadas na Zoppy)'),
+    blocoModelo('aniversario', 'Aniversário', 'Na Zoppy ia para o Painel do Vendedor. Fica guardada para quando o aniversário for automático.', false),
+    blocoModelo('recompra90', 'Recompra 90 dias', 'Cliente sem comprar há 90 dias (cupom de 10%). Fica guardada para a próxima etapa.', false),
+    blocoModelo('recompra180', 'Recompra 180 dias', 'Cliente sem comprar há 180 dias (cupom de 15%). Fica guardada para a próxima etapa.', false),
+    h('h2', { class: 'secao' }, 'Assinatura no fim de toda mensagem'),
+    h('div', { class: 'cartao' }, h('p', { class: 'suave pequeno', style: 'margin-bottom:6px' }, 'Deixe em branco para não usar.'), rodape),
+    h('h2', { class: 'secao' }, 'Modelos de campanha'),
+    h('p', { class: 'suave pequeno', style: 'margin-bottom:8px' }, 'Textos para mandar a um grupo de clientes (ex.: quem não compra há 90 dias). Vieram das campanhas que você fez na Zoppy. {data_limite} é a data final da campanha.'),
+    listaCampanhas,
+    h('button', { class: 'botao', type: 'button', style: 'margin-top:10px', onclick: () => { campanhas.push({ id: '', nome: 'Nova campanha', texto: 'Olá, {primeiro_nome}! ' }); desenharCampanhas(); } }, '+ Novo modelo de campanha'),
+  ];
+  rodape.addEventListener('input', () => previas.forEach((p) => p.atualizar()));
+  previas.forEach((p) => p.atualizar());
+  return h('form', { onsubmit: (e) => { e.preventDefault(); salvar(); } },
+    h('div', { class: 'cartao' },
+      h('p', { class: 'suave pequeno' }, 'As palavras entre chaves são trocadas sozinhas pelos dados do cliente. Asteriscos deixam o texto em *negrito* no WhatsApp.'),
+      h('div', { class: 'variaveis' }, M.VARIAVEIS_MENSAGEM.map(([v, d]) => h('code', { title: d }, v)))),
+    blocos,
+    h('div', { class: 'barra-salvar' }, h('button', { class: 'botao principal grande', type: 'submit' }, 'Salvar modelos')));
+}
 
-  trocar(tela,
-    h('h1', { class: 'titulo-tela' }, 'Configurações'),
-    h('form', { onsubmit: (e) => { e.preventDefault(); salvar(); } },
-      h('div', { class: 'cartao' },
-        h('h3', { style: 'margin-bottom:12px' }, 'Regras do giftback'),
-        h('div', { class: 'grade' },
-          h('label', { class: 'campo' }, h('span', {}, 'Giftback (% da compra)'), f.percentual),
-          h('label', { class: 'campo' }, h('span', {}, 'Compra mínima para ganhar (R$)'), f.minimo),
-          h('label', { class: 'campo' }, h('span', {}, 'Validade (dias)'), f.validade),
-          h('label', { class: 'campo' }, h('span', {}, 'Para usar: compra de quantas vezes o giftback'), f.multiplo),
-          h('label', { class: 'campo' }, h('span', {}, 'Lembrete após quantos dias'), f.lembrete),
-          h('label', { class: 'campo' }, h('span', {}, 'Aviso final: quantos dias antes de vencer'), f.avisoFinal),
-          h('label', { class: 'campo' }, h('span', {}, 'Nome da loja nas mensagens'), f.loja)),
-        exemplo,
-        h('p', { class: 'suave pequeno', style: 'margin-top:8px' }, 'Mudanças valem para os giftbacks novos. Os que já foram gerados continuam com o valor e a validade combinados com o cliente.')),
-      h('div', { class: 'cartao' },
-        h('h3', {}, 'Textos das mensagens de WhatsApp'),
-        h('p', { class: 'suave pequeno', style: 'margin-top:4px' }, 'As palavras entre chaves são trocadas sozinhas pelos dados do cliente. Asteriscos deixam o texto em *negrito* no WhatsApp.'),
-        variaveis(),
-        h('div', { class: 'grade', style: 'grid-template-columns:repeat(auto-fit,minmax(260px,1fr))' },
-          h('label', { class: 'campo' }, h('span', {}, '1. Giftback novo (na hora da compra)'), f.envio),
-          h('label', { class: 'campo' }, h('span', {}, '2. Lembrete'), f.lembreteTxt),
-          h('label', { class: 'campo' }, h('span', {}, '3. Vence em breve'), f.vencendo))),
-      h('div', { class: 'linha-flex', style: 'margin-top:14px' }, h('button', { class: 'botao principal grande', type: 'submit' }, 'Salvar configurações'))),
-    dados.modo === 'online' ? cartaoDadosOnline() : null,
-    dados.modo === 'teste' ? h('div', { class: 'cartao', style: 'margin-top:22px' },
-      h('h3', {}, 'Modo teste'),
-      h('p', { class: 'suave', style: 'margin:6px 0 12px' }, 'Você está usando uma cópia dos dados da Zoppy guardada só neste navegador. Pode lançar compras e cadastrar clientes à vontade: nada vai para a Zoppy nem para os clientes (a mensagem só sai se você apertar Enter no WhatsApp).'),
-      h('button', { class: 'botao perigo', onclick: () => { if (confirm('Apagar tudo que foi feito no teste e voltar aos dados da Zoppy?')) tentar(async () => { await dados.restaurarDadosZoppy(); config = await dados.obterConfig(); estado.clienteId = null; estado.resultadoCompra = null; avisar('Dados restaurados.'); await atualizarContador(); telaConfig(); }); } }, 'Apagar testes e recarregar dados da Zoppy')) : null);
+function cartaoModoTeste() {
+  return h('div', { class: 'cartao' },
+    h('h3', {}, 'Modo teste'),
+    h('p', { class: 'suave', style: 'margin:6px 0 12px' }, 'Você está usando uma cópia dos dados da Zoppy guardada só neste navegador. Pode lançar compras e cadastrar clientes à vontade: nada vai para a Zoppy nem para os clientes (a mensagem só sai se você apertar Enter no WhatsApp).'),
+    h('button', { class: 'botao perigo', onclick: () => { if (confirm('Apagar tudo que foi feito no teste e voltar aos dados da Zoppy?')) tentar(async () => { await dados.restaurarDadosZoppy(); config = await dados.obterConfig(); estado.clienteId = null; estado.resultadoCompra = null; avisar('Dados restaurados.'); await atualizarContador(); telaConfig(); }); } }, 'Apagar testes e recarregar dados da Zoppy'));
 }
 
 function cartaoDadosOnline() {

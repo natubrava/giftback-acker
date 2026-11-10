@@ -169,14 +169,14 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
      * Registra a compra: dá baixa no giftback usado, cria o novo (se a compra der direito)
      * e agenda as mensagens. Devolve tudo que a tela precisa mostrar.
      */
-    async lancarCompra({ clienteId, valorCentavos, usarGiftback = false, data = null, uniplusOperacaoId = null, itensExcluidos = null }) {
+    async lancarCompra({ clienteId, valorCentavos, usarGiftback = false, data = null, uniplusOperacaoId = null, itensExcluidos = null, percentual = null }) {
       expirarVencidos();
       const cliente = clientePorId(clienteId);
       if (!cliente) throw new Error('Cliente não encontrado.');
       if (uniplusOperacaoId != null && estado.compras.some((c) => c.uniplusOperacaoId === uniplusOperacaoId && c.status === 'ok')) {
         throw new Error('Esta venda do Uniplus já foi lançada.');
       }
-      const config = configAtual();
+      const config = percentual ? { ...configAtual(), percentual: Number(percentual) } : configAtual(); // % desta venda
       const agora = data ? new Date(data) : relogio();
       const atual = giftbackAtivoDe(clienteId);
       const r = calcularCompra({ valorCentavos, giftbackAtivo: atual, usarGiftback, config, agora });
@@ -317,6 +317,20 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
     async ignorarVendaUniplus(operacaoId) {
       estado.ignoradas = [...(estado.ignoradas || []), operacaoId];
       salvar();
+    },
+
+    /** Compras lançadas hoje (para o resumo da tela do caixa). */
+    async resumoDoDia() {
+      const hoje = diaSP(relogio());
+      const doDia = estado.compras.filter((c) => c.status === 'ok' && c.origem !== 'zoppy' && diaSP(c.data) === hoje);
+      const gerados = estado.giftbacks.filter((g) => g.origem !== 'zoppy' && g.status !== 'cancelado' && diaSP(g.criadoEm) === hoje);
+      return {
+        compras: doDia.length,
+        totalCentavos: doDia.reduce((s, c) => s + c.valorFinalCentavos, 0),
+        giftbacksGerados: gerados.length,
+        giftbacksUsados: doDia.filter((c) => c.giftbackUsadoId).length,
+        ultimas: doDia.slice(-5).reverse().map((c) => ({ ...c, cliente: clientePorId(c.clienteId) })),
+      };
     },
 
     /** Quantas mensagens já foram enviadas hoje (para o painel). */

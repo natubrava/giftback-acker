@@ -194,8 +194,8 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       return this.obterCliente(id);
     },
 
-    async lancarCompra({ clienteId, valorCentavos, usarGiftback = false, data = null, uniplusOperacaoId = null, itensExcluidos = null }) {
-      const config = configAtual();
+    async lancarCompra({ clienteId, valorCentavos, usarGiftback = false, data = null, uniplusOperacaoId = null, itensExcluidos = null, percentual = null }) {
+      const config = percentual ? { ...configAtual(), percentual: Number(percentual) } : configAtual(); // % desta venda
       const agora = data ? new Date(data) : relogio(); // venda do Uniplus: vale a data/hora da venda
       const atual = await giftbackAtivoAgora(clienteId); // sempre do banco, nunca da tela
       const r = calcularCompra({ valorCentavos, giftbackAtivo: atual, usarGiftback, config, agora });
@@ -271,6 +271,24 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
             .in('id', substituidas).eq('status', 'pendente'));
         }
       }
+    },
+
+    /** Compras lançadas hoje (para o resumo da tela do caixa). */
+    async resumoDoDia() {
+      const hoje = diaSP(relogio());
+      const desde = `${hoje}T00:00:00-03:00`;
+      const [compras, gerados] = await Promise.all([
+        supabase.from('gb_compras').select('*, cliente:gb_clientes(nome, sobrenome)').eq('status', 'ok').gte('data', desde).order('data', { ascending: false }).then(ok),
+        supabase.from('gb_giftbacks').select('id', { count: 'exact', head: true }).neq('status', 'cancelado').gte('criado_em', desde)
+          .then(({ count, error }) => { if (error) throw erro(error); return count || 0; }),
+      ]);
+      return {
+        compras: compras.length,
+        totalCentavos: compras.reduce((s, c) => s + c.valor_final_centavos, 0),
+        giftbacksGerados: gerados,
+        giftbacksUsados: compras.filter((c) => c.giftback_usado_id).length,
+        ultimas: compras.slice(0, 5).map((c) => ({ ...compra(c), cliente: c.cliente })),
+      };
     },
 
     /** Quantas mensagens já foram enviadas hoje (para o painel). */

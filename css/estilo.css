@@ -162,6 +162,23 @@ tr.cancelada td { color: #9aa29c; text-decoration: line-through; }
 .numero.alerta b { color: var(--vermelho); }
 .msg.atrasada { border-left: 5px solid #e0452b; }
 
+/* % de giftback por venda */
+.linha-pct { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; font-weight: 600; color: var(--texto-suave); }
+.linha-pct .pct { width: 72px; padding: 6px 8px; border: 1px solid #c9c5b6; border-radius: 8px; font-weight: 700; text-align: right; color: var(--texto); }
+.linha-pct .pct.alterado { border-color: #d08a00; background: var(--ambar-claro); }
+
+/* Configurações em seções */
+.subabas { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.subaba { border: 1px solid var(--linha); background: #fff; border-radius: 999px; padding: 8px 16px; font-weight: 600; cursor: pointer; }
+.subaba.ativa { background: var(--verde); border-color: var(--verde); color: #fff; }
+h2.secao { font-size: 1.05rem; margin: 22px 0 10px; color: var(--verde-escuro); }
+.modelo h3 { font-size: 1rem; }
+.modelo textarea { width: 100%; min-height: 150px; border: 1px solid #c9c5b6; border-radius: 10px; padding: 10px 12px; line-height: 1.4; resize: vertical; }
+.grade-modelo { display: grid; gap: 8px; }
+.grade-modelo details summary { cursor: pointer; color: var(--azul); font-size: .88rem; }
+.barra-salvar { position: sticky; bottom: 0; background: var(--fundo); padding: 12px 0; margin-top: 10px; }
+.variaveis code { cursor: help; }
+
 /* Vendas do PDV */
 .venda + .venda { margin-top: 12px; }
 tr.promo td { background: #fff8e8; }
