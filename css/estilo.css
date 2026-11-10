@@ -230,6 +230,9 @@ textarea.entrada { line-height: 1.4; resize: vertical; }
   .rfm-pct { display: none; }
 }
 
+.perigo-link { color: var(--vermelho) !important; }
+tr.excluido td { color: #8a908b; }
+
 /* Vendas do PDV */
 .venda + .venda { margin-top: 12px; }
 tr.promo td { background: #fff8e8; }

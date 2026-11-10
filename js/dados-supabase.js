@@ -11,6 +11,7 @@ const PAGINA = 1000;
 const cliente = (r) => r && ({
   id: r.id, nome: r.nome, sobrenome: r.sobrenome || '', telefone: r.telefone, email: r.email, sexo: r.sexo,
   nascimento: r.nascimento, cpf: r.cpf, uniplusCodigo: r.uniplus_codigo, criadoEm: r.criado_em, origem: r.origem,
+  excluidoEm: r.excluido_em || null, excluidoPor: r.excluido_por || null, motivoExclusao: r.motivo_exclusao || null,
 });
 const giftback = (r) => r && ({
   id: r.id, clienteId: r.cliente_id, codigo: r.codigo, tipo: r.tipo, percentual: r.percentual == null ? null : Number(r.percentual),
@@ -41,7 +42,8 @@ function erro(e) {
 const ok = ({ data, error }) => { if (error) throw erro(error); return data; };
 
 export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
-  let resumos = []; // gb_clientes_resumo em memória (600 linhas: rápido de buscar)
+  let resumos = []; // gb_clientes_resumo em memória (600 linhas: rápido de buscar), sem os excluídos
+  let excluidos = []; // clientes excluídos (guardados com data, quem e motivo)
   let ativos = new Map(); // clienteId -> giftback ativo
   let configSalva = null;
 
@@ -60,7 +62,8 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       todos(() => supabase.from('gb_clientes_resumo').select('*').order('id')),
       todos(() => supabase.from('gb_giftbacks').select('*').eq('status', 'ativo').order('id')),
     ]);
-    resumos = r;
+    resumos = r.filter((x) => !x.excluido_em);
+    excluidos = r.filter((x) => x.excluido_em);
     ativos = new Map(g.map((x) => [x.cliente_id, giftback(x)]));
   }
 
@@ -166,7 +169,7 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       const tel = normalizarTelefone(telefone);
       if (!tel) return null;
       const r = ok(await supabase.from('gb_clientes_resumo').select('*').eq('telefone', tel).maybeSingle());
-      return r ? resumo(r) : null;
+      return r ? resumo(r) : null; // pode vir um excluído (excluidoEm preenchido): a tela oferece restaurar
     },
 
     async criarCliente({ nome, sobrenome = '', telefone, sexo = null, email = null, cpf = null, uniplusCodigo = null }) {
@@ -182,12 +185,27 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       return resumo(linha);
     },
 
-    /** Apaga o cliente e TODO o histórico dele (o banco apaga compras, giftbacks e mensagens junto). */
-    async excluirCliente(id) {
-      const apagados = ok(await supabase.from('gb_clientes').delete().eq('id', id).select('id'));
-      if (!apagados?.length) throw new Error('Cliente não encontrado (ou sem permissão).');
-      resumos = resumos.filter((r) => r.id !== id);
-      ativos.delete(id);
+    /** Exclui o cliente com segurança: fica guardado (data, quem, motivo), sai das listas e pode ser restaurado. */
+    async excluirCliente(id, motivo) {
+      if (!String(motivo || '').trim()) throw new Error('Informe o motivo da exclusão.');
+      ok(await supabase.rpc('gb_excluir_cliente', { p_cliente: id, p_motivo: motivo }));
+      await recarregar();
+    },
+
+    async listarExcluidos() {
+      await recarregar();
+      return excluidos.map(resumo).sort((a, b) => String(b.excluidoEm).localeCompare(String(a.excluidoEm)));
+    },
+
+    async restaurarCliente(id) {
+      ok(await supabase.rpc('gb_restaurar_cliente', { p_cliente: id }));
+      await recarregar();
+    },
+
+    /** Apaga de vez (só cliente que já está excluído). Use só para clientes de teste. */
+    async apagarClienteDeVez(id) {
+      ok(await supabase.rpc('gb_apagar_cliente_de_vez', { p_cliente: id }));
+      await recarregar();
     },
 
     async atualizarCliente(id, dados) {

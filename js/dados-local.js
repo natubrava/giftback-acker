@@ -107,16 +107,44 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
       const achados = [];
       const porCodigo = estado.giftbacks.find((g) => g.status === 'ativo' && g.codigo.toLowerCase() === q.replace(/\s/g, ''));
       if (porCodigo) { const c = clientePorId(porCodigo.clienteId); if (c) achados.push(c); }
+      if (porCodigo && clientePorId(porCodigo.clienteId)?.excluidoEm) achados.length = 0;
       for (const c of estado.clientes) {
         if (achados.length >= limite) break;
-        if (c.id !== porCodigo?.clienteId && clienteCombina(c, q)) achados.push(c);
+        if (!c.excluidoEm && c.id !== porCodigo?.clienteId && clienteCombina(c, q)) achados.push(c);
       }
       return achados.map(resumoCliente).sort((a, b) => (b.ultimaCompra || '').localeCompare(a.ultimaCompra || ''));
     },
 
     async listarClientes() {
       expirarVencidos();
-      return estado.clientes.map(resumoCliente);
+      return estado.clientes.filter((c) => !c.excluidoEm).map(resumoCliente);
+    },
+
+    async listarExcluidos() {
+      return estado.clientes.filter((c) => c.excluidoEm).map(resumoCliente)
+        .sort((a, b) => String(b.excluidoEm).localeCompare(String(a.excluidoEm)));
+    },
+
+    async restaurarCliente(id) {
+      const c = clientePorId(id);
+      if (!c?.excluidoEm) throw new Error('Cliente não encontrado ou não está excluído.');
+      c.excluidoEm = null; c.excluidoPor = null; c.motivoExclusao = null;
+      for (const m of estado.mensagens) {
+        if (m.clienteId !== id || m.status !== 'cancelada' || m.motivo !== 'cliente excluído') continue;
+        const g = m.giftbackId ? estado.giftbacks.find((x) => x.id === m.giftbackId) : null;
+        if (!m.giftbackId || g?.status === 'ativo') { m.status = 'pendente'; delete m.motivo; }
+      }
+      salvar();
+    },
+
+    async apagarClienteDeVez(id) {
+      const c = clientePorId(id);
+      if (!c?.excluidoEm) throw new Error('Só dá para apagar de vez um cliente que já está na lista de excluídos.');
+      estado.clientes = estado.clientes.filter((x) => x.id !== id);
+      estado.compras = estado.compras.filter((x) => x.clienteId !== id);
+      estado.giftbacks = estado.giftbacks.filter((g) => g.clienteId !== id);
+      estado.mensagens = estado.mensagens.filter((m) => m.clienteId !== id);
+      salvar();
     },
 
     async obterCliente(id) {
@@ -150,13 +178,13 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
       return resumoCliente(c);
     },
 
-    /** Apaga o cliente e TODO o histórico dele (compras, giftbacks, mensagens). Não tem volta. */
-    async excluirCliente(id) {
-      if (!clientePorId(id)) throw new Error('Cliente não encontrado.');
-      estado.clientes = estado.clientes.filter((c) => c.id !== id);
-      estado.compras = estado.compras.filter((c) => c.clienteId !== id);
-      estado.giftbacks = estado.giftbacks.filter((g) => g.clienteId !== id);
-      estado.mensagens = estado.mensagens.filter((m) => m.clienteId !== id);
+    /** Exclui o cliente com segurança: fica guardado (data, quem, motivo), sai das listas e pode ser restaurado. */
+    async excluirCliente(id, motivo) {
+      const c = clientePorId(id);
+      if (!c || c.excluidoEm) throw new Error('Cliente não encontrado ou já excluído.');
+      if (!String(motivo || '').trim()) throw new Error('Informe o motivo da exclusão.');
+      c.excluidoEm = agoraISO(); c.excluidoPor = 'modo teste'; c.motivoExclusao = String(motivo).trim();
+      for (const m of estado.mensagens) if (m.clienteId === id && m.status === 'pendente') { m.status = 'cancelada'; m.motivo = 'cliente excluído'; }
       salvar();
     },
 

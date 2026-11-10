@@ -239,7 +239,9 @@ function painelNovoCliente(painel, prefill, aoSalvar, aoCancelar) {
   fTel.addEventListener('blur', async () => {
     trocar(jaExiste);
     const c = await dados.clientePorTelefone(fTel.value);
-    if (c) jaExiste.append(h('div', { class: 'caixa-info ambar', style: 'margin-top:10px' }, 'Este telefone já é de ', h('b', {}, nomeCompleto(c)), '. ',
+    if (c?.excluidoEm) jaExiste.append(h('div', { class: 'caixa-info ambar', style: 'margin-top:10px' }, 'Este telefone é de ', h('b', {}, nomeCompleto(c)), `, cliente excluído em ${dia(c.excluidoEm)}. `,
+      h('button', { class: 'link', type: 'button', onclick: () => tentar(async () => { await dados.restaurarCliente(c.id); avisar('Cliente restaurado.'); aoSalvar(c); }) }, 'Restaurar este cliente')));
+    else if (c) jaExiste.append(h('div', { class: 'caixa-info ambar', style: 'margin-top:10px' }, 'Este telefone já é de ', h('b', {}, nomeCompleto(c)), '. ',
       h('button', { class: 'link', onclick: () => aoSalvar(c) }, 'Abrir cadastro')));
   });
 
@@ -513,20 +515,19 @@ function editarCliente(painel, c, depois) {
       h('button', { class: 'botao principal', type: 'submit' }, 'Salvar'),
       h('button', { class: 'botao', type: 'button', onclick: depois }, 'Cancelar'),
       h('span', { class: 'espaco' }),
-      h('button', { class: 'botao perigo', type: 'button', onclick: () => tentar(async () => {
+      h('button', { class: 'link pequeno perigo-link', type: 'button', onclick: () => tentar(async () => {
         const nome = nomeCompleto(c);
-        const resp = prompt(`Excluir ${nome} e TODO o histórico (compras, giftbacks e mensagens)?
-Isso não tem volta.
-
-Para confirmar, digite: EXCLUIR`);
-        if (resp == null) return;
-        if (resp.trim().toUpperCase() !== 'EXCLUIR') { avisar('Nada foi excluído.'); return; }
-        await dados.excluirCliente(c.id);
+        const motivo = prompt(`Excluir ${nome}?\n\nO cliente sai das listas, da matriz e das campanhas, mas fica guardado em Clientes > Excluídos (com data, quem excluiu e motivo) e pode ser restaurado.\n\nQual o motivo da exclusão?`);
+        if (motivo == null) return;
+        if (!motivo.trim()) { avisar('Informe o motivo. Nada foi excluído.', true); return; }
+        const conf = prompt(`Para confirmar a exclusão de ${nome}, digite: EXCLUIR`);
+        if (conf == null || conf.trim().toUpperCase() !== 'EXCLUIR') { avisar('Nada foi excluído.'); return; }
+        await dados.excluirCliente(c.id, motivo.trim());
         estado.clienteId = null; estado.resultadoCompra = null; estado.busca = '';
-        avisar(`${nome} foi excluído.`);
+        avisar(`${nome} foi excluído. Dá para restaurar em Clientes > Excluídos.`);
         await atualizarContador();
         telaCaixa();
-      }) }, 'Excluir cliente'))));
+      }) }, 'Excluir cliente…'))));
 }
 
 // ───────────────────────── MENSAGENS ─────────────────────────
@@ -740,6 +741,33 @@ async function telaUniplus() {
 
 // ───────────────────────── CLIENTES ─────────────────────────
 
+/** Clientes excluídos: aparecem riscados, com data, quem excluiu e motivo. Restaurar ou apagar de vez (testes). */
+function cartaoExcluidos() {
+  const caixa = h('details', { class: 'cartao excluidos', style: 'margin-top:14px' });
+  const corpo = h('div', {});
+  caixa.addEventListener('toggle', () => { if (caixa.open) desenhar(); });
+  async function desenhar() {
+    const lista = await dados.listarExcluidos();
+    trocar(corpo, lista.length ? h('div', { class: 'rolagem' }, h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, 'Cliente'), h('th', {}, 'Celular'), h('th', {}, 'Excluído em'), h('th', {}, 'Por'), h('th', {}, 'Motivo'), h('th', {}, ''))),
+      h('tbody', {}, lista.map((c) => h('tr', { class: 'excluido' },
+        h('td', {}, h('s', {}, nomeCompleto(c))),
+        h('td', {}, h('s', {}, M.formatarTelefone(c.telefone))),
+        h('td', {}, new Date(c.excluidoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })),
+        h('td', { class: 'pequeno' }, c.excluidoPor || ''),
+        h('td', {}, c.motivoExclusao || ''),
+        h('td', { style: 'white-space:nowrap' },
+          h('button', { class: 'botao', onclick: () => tentar(async () => { await dados.restaurarCliente(c.id); avisar(`${nomeCompleto(c)} foi restaurado.`); await atualizarContador(); telaClientes(); }) }, 'Restaurar'), ' ',
+          h('button', { class: 'link pequeno perigo-link', onclick: () => tentar(async () => {
+            const conf = prompt(`Apagar ${nomeCompleto(c)} DE VEZ, com compras, giftbacks e mensagens?\nIsso não tem volta. Use só para clientes de teste.\n\nPara confirmar, digite: APAGAR`);
+            if (conf == null || conf.trim().toUpperCase() !== 'APAGAR') { if (conf != null) avisar('Nada foi apagado.'); return; }
+            await dados.apagarClienteDeVez(c.id); avisar('Apagado de vez.'); desenhar();
+          }) }, 'apagar de vez'))))))) : h('p', { class: 'suave' }, 'Nenhum cliente excluído.'));
+  }
+  caixa.append(h('summary', { style: 'cursor:pointer;font-weight:700' }, 'Clientes excluídos'), h('p', { class: 'suave pequeno', style: 'margin:6px 0 10px' }, 'Quem foi excluído fica guardado aqui, riscado, com data, quem excluiu e o motivo. "Restaurar" traz o cliente de volta com todo o histórico.'), corpo);
+  return caixa;
+}
+
 async function telaClientes() {
   const [todos, resumo] = [await dados.listarClientes(), await dados.resumoGeral()];
   todos.sort((a, b) => (b.ultimaCompra || '').localeCompare(a.ultimaCompra || ''));
@@ -774,7 +802,8 @@ async function telaClientes() {
       h('div', { class: 'rolagem' }, h('table', {},
         h('thead', {}, h('tr', {}, h('th', {}, 'Cliente'), h('th', {}, 'Celular'), h('th', { class: 'num' }, 'Compras'), h('th', { class: 'num' }, 'Total'), h('th', {}, 'Última compra'), h('th', {}, 'Giftback'))),
         corpo)),
-      rodape));
+      rodape),
+    cartaoExcluidos());
   desenhar();
 }
 
