@@ -1,7 +1,12 @@
-// rfm.js — Matriz RFM (Recência x Frequência) e público de campanhas. Funções puras, com testes.
-// Notas de 1 a 5 com faixas fixas, fáceis de explicar no balcão:
-//   Recência (dias desde a última compra): até 30 = 5 · até 60 = 4 · até 90 = 3 · até 180 = 2 · mais = 1
-//   Frequência (número de compras):        10+ = 5 · 5 a 9 = 4 · 3 a 4 = 3 · 2 = 2 · 1 = 1
+// rfm.js — Matriz RFM e público de campanhas. Funções puras, com testes.
+// Mesmo método da Zoppy (conferido em 2026-11-10: bate em 90% dos clientes; o resto é porque a Zoppy
+// só recalcula uma vez por dia e usa a base dela):
+//   R = nota de 1 a 5 da recência (dias desde a última compra), RELATIVA à base: os 20% que compraram
+//       mais recentemente ganham 5, os 20% seguintes 4... (quintis).
+//   F = nota de 1 a 5 do número de compras e M = nota de 1 a 5 do total gasto, também por quintis.
+//   FM = média de F e M arredondada para baixo.
+//   A categoria sai da posição (R, FM) na grade 5x5 padrão de RFM.
+// As faixas fixas abaixo ficam só como referência/explicação.
 import { diaSP, diasEntre } from './motor.js';
 
 export const FAIXAS_RECENCIA = Object.freeze([30, 60, 90, 180]); // dias
@@ -9,8 +14,8 @@ export const FAIXAS_FREQUENCIA = Object.freeze([2, 3, 5, 10]); // compras
 
 export const SEGMENTOS_RFM = Object.freeze({
   campeao: { nome: 'Campeão', cor: '#7b4fd6', descricao: 'Comprou há pouco e compra sempre. São os melhores clientes.', sugestao: 'Agradeça, mostre novidades primeiro e peça indicação.' },
-  fiel: { nome: 'Fiel', cor: '#12a594', descricao: 'Compra com frequência e esteve na loja nos últimos 3 meses.', sugestao: 'Mantenha por perto: avise de reposições e ofertas do Club.' },
-  possivel_fiel: { nome: 'Possível fiel', cor: '#2b8fd6', descricao: 'Comprou há pouco e já voltou algumas vezes.', sugestao: 'Incentive a próxima compra para virar fiel (lembrete do giftback).' },
+  fiel: { nome: 'Fidelizado', cor: '#12a594', descricao: 'Compra com frequência e esteve na loja nos últimos 3 meses.', sugestao: 'Mantenha por perto: avise de reposições e ofertas do Club.' },
+  possivel_fiel: { nome: 'Possível leal', cor: '#2b8fd6', descricao: 'Comprou há pouco e já voltou algumas vezes.', sugestao: 'Incentive a próxima compra para virar fidelizado (lembrete do giftback).' },
   novo: { nome: 'Novo', cor: '#3aa655', descricao: 'Primeira compra nos últimos 30 dias.', sugestao: 'Dê boas-vindas ao Club e lembre do giftback.' },
   promissor: { nome: 'Promissor', cor: '#1f79b8', descricao: 'Uma compra só, entre 1 e 2 meses atrás.', sugestao: 'Convide para voltar antes que esfrie.' },
   atencao: { nome: 'Precisa de atenção', cor: '#a25ad1', descricao: 'Cliente médio que não aparece há 2 a 3 meses.', sugestao: 'Mande uma oferta por tempo limitado.' },
@@ -39,16 +44,44 @@ export function segmentoRFM(r, f) {
 }
 
 /**
+ * Nota de 1 a 5 por quintis: posição do valor na base (empates ficam no meio). `inverter` = menor é melhor.
+ * Devolve uma função valor -> nota.
+ */
+export function notaPorQuintil(valores, inverter = false) {
+  const ord = [...valores].sort((a, b) => a - b);
+  const n = ord.length;
+  const posicao = (x) => {
+    let lo = 0, hi = n; // primeiros >= x
+    while (lo < hi) { const m = (lo + hi) >> 1; if (ord[m] < x) lo = m + 1; else hi = m; }
+    let fim = lo; // primeiro > x
+    let a = lo, b = n;
+    while (a < b) { const m = (a + b) >> 1; if (ord[m] <= x) a = m + 1; else b = m; }
+    fim = a;
+    return (lo + (fim - lo) / 2) / n;
+  };
+  return (x) => {
+    if (!n) return 3;
+    const nota = Math.min(5, Math.floor(posicao(x) * 5) + 1);
+    return inverter ? 6 - nota : nota;
+  };
+}
+
+/**
  * Classifica os clientes. Entrada: [{compras, totalCentavos, ultimaCompra, ...}].
- * Saída: os mesmos clientes com rfm = {r, f, segmento, diasSemComprar}. Quem não tem compra fica com rfm = null.
+ * Saída: os mesmos clientes com rfm = {r, f, m, fm, segmento, diasSemComprar}. Quem não tem compra fica com rfm = null.
  */
 export function classificarRFM(clientes, hoje) {
+  const comCompra = clientes.filter((c) => c.compras && c.ultimaCompra);
+  const dias = (c) => Math.max(0, diasEntre(diaSP(c.ultimaCompra), hoje));
+  const nR = notaPorQuintil(comCompra.map(dias), true);
+  const nF = notaPorQuintil(comCompra.map((c) => c.compras));
+  const nM = notaPorQuintil(comCompra.map((c) => c.totalCentavos || 0));
   return clientes.map((c) => {
     if (!c.compras || !c.ultimaCompra) return { ...c, rfm: null };
-    const diasSemComprar = Math.max(0, diasEntre(diaSP(c.ultimaCompra), hoje));
-    const r = notaRecencia(diasSemComprar);
-    const f = notaFrequencia(c.compras);
-    return { ...c, rfm: { r, f, segmento: segmentoRFM(r, f), diasSemComprar } };
+    const diasSemComprar = dias(c);
+    const r = nR(diasSemComprar), f = nF(c.compras), m = nM(c.totalCentavos || 0);
+    const fm = Math.floor((f + m) / 2);
+    return { ...c, rfm: { r, f, m, fm, segmento: segmentoRFM(r, fm), diasSemComprar } };
   });
 }
 
@@ -57,7 +90,16 @@ export function resumoGrupo(lista) {
   const compras = lista.reduce((s, c) => s + (c.compras || 0), 0);
   const total = lista.reduce((s, c) => s + (c.totalCentavos || 0), 0);
   const datas = lista.map((c) => c.ultimaCompra).filter(Boolean).sort();
+  // tempo médio entre uma compra e outra (só de quem comprou 2+ vezes e tem a data da primeira compra)
+  const intervalos = lista.filter((c) => c.compras > 1 && c.primeiraCompra && c.ultimaCompra)
+    .map((c) => diasEntre(diaSP(c.primeiraCompra), diaSP(c.ultimaCompra)) / (c.compras - 1));
+  const qtd = lista.map((c) => c.compras || 0);
   return {
+    // a Zoppy chama de "tempo médio de recompra" a média de dias desde a última compra do grupo
+    mediaDiasSemComprar: lista.some((c) => c.rfm) ? Math.round(lista.reduce((s, c) => s + (c.rfm?.diasSemComprar || 0), 0) / lista.length) : null,
+    tempoMedioRecompraDias: intervalos.length ? Math.round(intervalos.reduce((s, x) => s + x, 0) / intervalos.length) : null,
+    frequenciaMin: qtd.length ? Math.min(...qtd) : 0,
+    frequenciaMax: qtd.length ? Math.max(...qtd) : 0,
     clientes: lista.length,
     compras,
     totalCentavos: total,

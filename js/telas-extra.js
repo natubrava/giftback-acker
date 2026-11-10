@@ -72,7 +72,9 @@ export function criarTelasExtras(ctx) {
           numero('Clientes', `${r.clientes} (${pct(r.clientes, todos.length)})`),
           numero('Valor total de compras', M.formatarReais(r.totalCentavos)),
           numero('Ticket médio', M.formatarReais(r.ticketMedioCentavos)),
-          numero('Compras por cliente', r.clientes ? (r.compras / r.clientes).toFixed(1).replace('.', ',') : '0'),
+          numero('Tempo médio sem comprar', r.mediaDiasSemComprar != null ? `${r.mediaDiasSemComprar} dias` : '—'),
+          numero('Intervalo médio entre compras', r.tempoMedioRecompraDias != null ? `${r.tempoMedioRecompraDias} dias` : '—'),
+          numero('Frequência (compras)', r.clientes ? `${r.frequenciaMin} a ${r.frequenciaMax}` : '—'),
           numero('Compra mais recente', r.maisRecente ? dia(r.maisRecente) : '—'),
           numero('Última compra mais antiga', r.maisAntiga ? dia(r.maisAntiga) : '—'),
           numero('Com giftback ativo', r.comGiftback)),
@@ -133,7 +135,7 @@ export function criarTelasExtras(ctx) {
           h('div', { class: 'rfm-eixo-x' }, 'comprou há mais tempo ← → comprou há pouco')),
         detalhe),
       h('p', { class: 'suave pequeno', style: 'margin-top:8px' },
-        'Como é calculado: da esquerda para a direita, há quanto tempo foi a última compra (mais de 180 dias, até 180, até 90, até 60, até 30). De baixo para cima, quantas compras já fez (1, 2, 3 a 4, 5 a 9, 10 ou mais). Atualiza sozinho a cada compra.'),
+        'Como é calculado (mesmo método da Zoppy): cada cliente ganha uma nota de 1 a 5 em recência (da esquerda para a direita: comprou há mais tempo → comprou há pouco) e uma nota de frequência e valor gasto (de baixo para cima). As notas são relativas: os 20% melhores da base ganham 5, os 20% seguintes 4, e assim por diante. Atualiza sozinho a cada compra.'),
       lista);
     desenhar();
   }

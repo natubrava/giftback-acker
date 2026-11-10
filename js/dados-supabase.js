@@ -66,7 +66,7 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
 
   const resumo = (r) => ({
     ...cliente(r), giftback: ativos.get(r.id) || null, compras: r.compras, totalCentavos: Number(r.total_centavos),
-    ultimaCompra: r.ultima_compra,
+    ultimaCompra: r.ultima_compra, primeiraCompra: r.primeira_compra || null,
   });
 
   function configAtual() {

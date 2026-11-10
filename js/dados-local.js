@@ -56,13 +56,14 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
   const clientePorId = (id) => estado.clientes.find((c) => c.id === id) || null;
 
   function resumoCliente(c) {
-    let compras = 0, totalCentavos = 0, ultima = null;
+    let compras = 0, totalCentavos = 0, ultima = null, primeira = null;
     for (const p of estado.compras) {
       if (p.clienteId !== c.id || p.status !== 'ok') continue;
       compras++; totalCentavos += p.valorFinalCentavos;
       if (!ultima || p.data > ultima) ultima = p.data;
+      if (!primeira || p.data < primeira) primeira = p.data;
     }
-    return { ...c, giftback: giftbackAtivoDe(c.id), compras, totalCentavos, ultimaCompra: ultima };
+    return { ...c, giftback: giftbackAtivoDe(c.id), compras, totalCentavos, ultimaCompra: ultima, primeiraCompra: primeira };
   }
 
   return {
