@@ -168,6 +168,15 @@ function telaCaixa() {
     if (e.key === 'Enter' && lista.length) abrirCliente(lista[0].id);
     if (e.key === 'Escape') { campo.value = ''; buscar(); }
   });
+  // Esc em qualquer lugar da tela do caixa fecha o cliente aberto e volta para a busca
+  const aoTeclar = (e) => {
+    if (e.key !== 'Escape' || (location.hash || '#caixa') !== '#caixa' || !estado.clienteId) return;
+    if (document.activeElement && document.activeElement !== campo && document.activeElement.tagName === 'INPUT' && document.activeElement.value) return;
+    fechar();
+  };
+  document.removeEventListener('keydown', window.__gbEsc || (() => {}));
+  window.__gbEsc = aoTeclar;
+  document.addEventListener('keydown', aoTeclar);
 
   const fechar = () => { campo.value = ''; estado.busca = ''; estado.clienteId = null; trocar(painel); desenharResumoDoDia(painel); campo.focus(); };
 
@@ -185,7 +194,7 @@ function telaCaixa() {
 
   trocar(tela,
     h('h1', { class: 'titulo-tela' }, 'Caixa'),
-    h('div', { class: 'busca' }, campo, h('button', { class: 'botao', onclick: () => abrirNovo() }, '+ Cliente novo')),
+    h('div', { class: 'busca' }, campo, h('button', { class: 'botao', onclick: () => abrirNovo() }, h('span', { class: 'longo' }, '+ Cliente novo'), h('span', { class: 'curto' }, '+ Novo'))),
     resultados, painel);
   if (!estado.clienteId && !estado.busca && !estado.novoPrefill) desenharResumoDoDia(painel);
 
@@ -260,29 +269,43 @@ async function painelCliente(painel, aoFechar) {
   const g = c.giftback;
   const redesenhar = () => painelCliente(painel, aoFechar);
 
-  // Cabeçalho
+  // Cabeçalho: nome, telefone e a última compra bem visível
+  const diasDesde = c.ultimaCompra ? M.diasEntre(M.diaSP(c.ultimaCompra), hoje()) : null;
+  const ultima = c.ultimaCompra
+    ? `Última compra ${dia(c.ultimaCompra)} (${diasDesde === 0 ? 'hoje' : diasDesde === 1 ? 'ontem' : `há ${diasDesde} dias`}) · ${c.compras} compra${c.compras > 1 ? 's' : ''} · ${M.formatarReais(c.totalCentavos)}`
+    : 'Primeira compra';
+  const historico = h('div', { class: 'cartao historico', id: 'historico' });
   const cabecalho = h('div', { class: 'cliente-topo' },
-    h('div', {},
+    h('div', { class: 'cliente-id' },
       h('h2', { class: 'cliente-nome' }, nomeCompleto(c)),
-      h('div', { class: 'cliente-dados' }, M.formatarTelefone(c.telefone),
-        c.compras ? ` · ${c.compras} compra${c.compras > 1 ? 's' : ''} · ${M.formatarReais(c.totalCentavos)} no total · última em ${dia(c.ultimaCompra)}` : ' · primeira compra')),
-    h('span', { class: 'espaco' }),
-    h('button', { class: 'botao', onclick: () => editarCliente(painel, c, redesenhar) }, 'Editar'),
-    h('button', { class: 'botao', onclick: aoFechar }, 'Fechar'));
+      h('div', { class: 'cliente-dados' }, M.formatarTelefone(c.telefone)),
+      h('div', { class: 'cliente-ultima' }, ultima)),
+    h('div', { class: 'cliente-acoes' },
+      h('button', { class: 'botao', onclick: () => historico.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 'Histórico'),
+      h('button', { class: 'botao', onclick: () => editarCliente(painel, c, redesenhar) }, 'Editar'),
+      h('button', { class: 'botao', onclick: aoFechar, title: 'Fechar (Esc)' }, '✕')));
 
   // Giftback
   let cartaoGift;
   if (g) {
     const faltam = M.diasEntre(hoje(), M.diaSP(g.expiraEm));
     cartaoGift = h('div', { class: 'gift' + (faltam <= 3 ? ' alerta' : '') },
-      h('div', { class: 'gift-rotulo' }, g.tipo === 'resgate' ? 'Cupom de resgate ativo' : 'Giftback ativo'),
-      h('div', { class: 'gift-valor' }, valorGift(g)),
-      h('div', { class: 'gift-detalhes' },
-        h('span', {}, 'Código ', h('span', { class: 'codigo' }, g.codigo)),
-        h('span', {}, 'Vale até ', h('b', {}, dia(g.expiraEm)), ` (${textoPrazo(g)})`),
-        g.minimoCentavos ? h('span', {}, 'Compra mínima ', h('b', {}, M.formatarReais(g.minimoCentavos))) : null));
+      h('div', { class: 'gift-linha' },
+        h('div', {},
+          h('div', { class: 'gift-rotulo' }, g.tipo === 'resgate' ? 'Cupom de resgate ativo' : 'Tem giftback'),
+          h('div', { class: 'gift-valor' }, valorGift(g))),
+        h('div', { class: 'gift-lado' },
+          h('div', {}, 'Vale até ', h('b', {}, dia(g.expiraEm))),
+          h('div', { class: faltam <= 3 ? 'urgente' : '' }, textoPrazo(g)),
+          g.minimoCentavos ? h('div', {}, 'Compra mín. ', h('b', {}, M.formatarReais(g.minimoCentavos))) : null)),
+      h('div', { class: 'gift-codigo' }, 'Código ', h('span', { class: 'codigo' }, g.codigo)));
   } else {
-    cartaoGift = h('div', { class: 'gift sem' }, 'Sem giftback ativo no momento.');
+    const ultimoGift = c.historicoGiftbacks[0];
+    const motivo = !ultimoGift ? 'Ainda não ganhou giftback.'
+      : ultimoGift.status === 'usado' ? `Último giftback (${valorGift(ultimoGift)}) foi usado em ${dia(ultimoGift.usadoEm)}.`
+        : ultimoGift.status === 'expirado' ? `Último giftback (${valorGift(ultimoGift)}) venceu em ${dia(ultimoGift.expiraEm)}.`
+          : '';
+    cartaoGift = h('div', { class: 'gift sem' }, h('b', {}, 'Sem giftback no momento.'), motivo ? h('div', { class: 'pequeno' }, motivo) : null);
   }
 
   // Resultado da compra recém-lançada ou formulário
@@ -290,27 +313,75 @@ async function painelCliente(painel, aoFechar) {
   if (estado.resultadoCompra) desenharSucesso(area, estado.resultadoCompra, c, aoFechar, redesenhar);
   else desenharFormulario(area, c, g, redesenhar);
 
-  // Histórico
-  const ultimaOk = c.historicoCompras.find((p) => p.status === 'ok');
-  const historico = c.historicoCompras.length ? h('div', { class: 'cartao' },
-    h('h3', { style: 'margin-bottom:8px' }, 'Últimas compras'),
-    h('div', { class: 'rolagem' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'Data'), h('th', { class: 'num' }, 'Valor'), h('th', { class: 'num' }, 'Giftback usado'), h('th', { class: 'num' }, 'Pagou'), h('th', {}, ''))),
-      h('tbody', {}, c.historicoCompras.slice(0, 8).map((p) => h('tr', { class: p.status === 'ok' ? '' : 'cancelada' },
-        h('td', {}, dia(p.data)),
-        h('td', { class: 'num' }, M.formatarReais(p.valorCentavos)),
-        h('td', { class: 'num' }, p.descontoCentavos ? '− ' + M.formatarReais(p.descontoCentavos) : '—'),
-        h('td', { class: 'num' }, M.formatarReais(p.valorFinalCentavos)),
-        h('td', {}, p.status !== 'ok' ? 'cancelada'
-          : (p.id === ultimaOk?.id && p.origem === 'acker'
-            ? h('button', { class: 'link', onclick: () => desfazerCompra(p, redesenhar) }, 'desfazer') : ''))))))))
-    : null;
-
+  desenharHistorico(historico, c, redesenhar);
   trocar(painel, h('div', { class: 'cartao' }, cabecalho, cartaoGift, area), historico);
 }
 
+const STATUS_GIFT = { ativo: ['verde', 'ativo'], usado: ['azul', 'usado'], expirado: ['vermelha', 'venceu'], substituido: ['cinza', 'trocado por um maior'], cancelado: ['cinza', 'cancelado'] };
+const STATUS_MSG = { enviada: ['verde', 'enviada'], pendente: ['ambar', 'na fila'], pulada: ['cinza', 'pulada'], cancelada: ['cinza', 'não precisou'] };
+
+/** Histórico do cliente em 3 abas: compras, giftbacks e mensagens (para tirar dúvida do cliente no balcão). */
+function desenharHistorico(caixa, c, redesenhar) {
+  const abas = [['compras', `Compras (${c.historicoCompras.length})`], ['giftbacks', `Giftbacks (${c.historicoGiftbacks.length})`], ['mensagens', `Mensagens (${(c.historicoMensagens || []).length})`]];
+  let atual = estado.abaHistorico || 'compras';
+  const corpo = h('div', { class: 'rolagem' });
+  const ultimaOk = c.historicoCompras.find((p) => p.status === 'ok');
+  const gifts = new Map(c.historicoGiftbacks.map((g) => [g.id, g]));
+
+  function mostrar() {
+    estado.abaHistorico = atual;
+    trocar(barra, abas.map(([id, nome]) => h('button', { class: 'subaba' + (id === atual ? ' ativa' : ''), type: 'button', onclick: () => { atual = id; mostrar(); } }, nome)));
+    if (atual === 'compras') {
+      trocar(corpo, c.historicoCompras.length ? h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, 'Data'), h('th', { class: 'num' }, 'Compra'), h('th', { class: 'num' }, 'Desconto'), h('th', { class: 'num' }, 'Pagou'), h('th', {}, 'Giftback gerado'), h('th', {}, ''))),
+        h('tbody', {}, c.historicoCompras.map((p) => {
+          const gerado = p.giftbackGeradoId ? gifts.get(p.giftbackGeradoId) : null;
+          return h('tr', { class: p.status === 'ok' ? '' : 'cancelada' },
+            h('td', {}, dia(p.data)),
+            h('td', { class: 'num' }, M.formatarReais(p.valorCentavos)),
+            h('td', { class: 'num' }, p.descontoCentavos ? '− ' + M.formatarReais(p.descontoCentavos) : '—'),
+            h('td', { class: 'num' }, M.formatarReais(p.valorFinalCentavos)),
+            h('td', {}, gerado ? `${valorGift(gerado)}` : ''),
+            h('td', {}, p.status !== 'ok' ? 'cancelada'
+              : (p.id === ultimaOk?.id && p.origem !== 'zoppy'
+                ? h('button', { class: 'link', onclick: () => desfazerCompra(p, redesenhar) }, 'desfazer') : '')));
+        }))) : h('p', { class: 'suave' }, 'Nenhuma compra registrada.'));
+    } else if (atual === 'giftbacks') {
+      trocar(corpo, c.historicoGiftbacks.length ? h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, 'Ganhou em'), h('th', { class: 'num' }, 'Valor'), h('th', {}, 'Validade'), h('th', {}, 'Situação'), h('th', {}, 'Código'))),
+        h('tbody', {}, c.historicoGiftbacks.map((g) => {
+          const [cor, texto] = STATUS_GIFT[g.status] || ['cinza', g.status];
+          return h('tr', {},
+            h('td', {}, dia(g.criadoEm)),
+            h('td', { class: 'num' }, valorGift(g)),
+            h('td', {}, dia(g.expiraEm)),
+            h('td', {}, h('span', { class: 'etiqueta ' + cor }, texto), g.status === 'usado' && g.usadoEm ? ` em ${dia(g.usadoEm)}` : ''),
+            h('td', {}, h('span', { class: 'codigo' }, g.codigo)));
+        }))) : h('p', { class: 'suave' }, 'Nenhum giftback ainda.'));
+    } else {
+      const msgs = c.historicoMensagens || [];
+      trocar(corpo, msgs.length ? h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, 'Mensagem'), h('th', {}, 'Prevista para'), h('th', {}, 'Situação'), h('th', {}, 'Giftback'))),
+        h('tbody', {}, msgs.map((m) => {
+          const [cor, texto] = STATUS_MSG[m.status] || ['cinza', m.status];
+          const g = gifts.get(m.giftbackId);
+          return h('tr', {},
+            h('td', {}, M.TIPOS_MENSAGEM[m.tipo] || m.tipo),
+            h('td', {}, M.formatarDia(m.devidaEm)),
+            h('td', {}, h('span', { class: 'etiqueta ' + cor }, texto),
+              m.status === 'enviada' && m.enviadaEm ? ` em ${dia(m.enviadaEm)}` : m.status === 'enviada' && m.origem === 'zoppy' ? ' (pela Zoppy)' : ''),
+            h('td', {}, g ? `${valorGift(g)} até ${dia(g.expiraEm)}` : ''));
+        }))) : h('p', { class: 'suave' }, 'Nenhuma mensagem registrada.'));
+    }
+  }
+  const barra = h('div', { class: 'subabas' });
+  trocar(caixa, h('h3', { style: 'margin-bottom:8px' }, 'Histórico do cliente'), barra, corpo,
+    h('p', { class: 'suave pequeno', style: 'margin-top:8px' }, 'Mensagens enviadas pela Zoppy antes da troca aparecem como "enviada (pela Zoppy)", sem a data exata.'));
+  mostrar();
+}
+
 function desenharFormulario(area, cliente, g, redesenhar) {
-  const fValor = h('input', { type: 'text', inputMode: 'decimal', placeholder: '0,00', autocomplete: 'off', 'aria-label': 'Valor da compra' });
+  const fValor = h('input', { type: 'text', inputMode: 'decimal', placeholder: 'valor', title: 'Valor dos produtos que NÃO estão em promoção', autocomplete: 'off', 'aria-label': 'Valor da compra (itens não promocionais)' });
   const previa = h('div', { class: 'previa' });
   const confirmar = h('button', { class: 'botao principal grande', disabled: true }, 'Confirmar compra');
   let usar = null; // null = ainda não decidiu (segue o padrão: usar sempre que puder)
@@ -332,12 +403,10 @@ function desenharFormulario(area, cliente, g, redesenhar) {
       previa.append(h('div', { class: 'caixa-info ambar' }, `Ainda não dá para usar o giftback: faltam ${M.formatarReais(uso.faltamCentavos)} para a compra mínima de ${M.formatarReais(g.minimoCentavos)}.`));
     }
 
-    if (vaiUsar) {
-      previa.append(h('div', { class: 'conta' },
-        h('span', {}, 'Compra'), h('span', { class: 'direita' }, M.formatarReais(valor)),
-        h('span', {}, 'Desconto no PDV'), h('span', { class: 'direita' }, '− ' + M.formatarReais(r.descontoCentavos)),
-        h('span', { class: 'total' }, 'Cliente paga'), h('span', { class: 'total direita' }, M.formatarReais(r.valorFinalCentavos))));
-    }
+    previa.append(h('div', { class: 'conta' + (vaiUsar ? ' com-desconto' : '') },
+      h('span', {}, 'Compra'), h('span', { class: 'direita' }, M.formatarReais(valor)),
+      vaiUsar ? [h('span', {}, 'Desconto no PDV'), h('span', { class: 'direita desconto' }, '− ' + M.formatarReais(r.descontoCentavos))] : null,
+      h('span', { class: 'total' }, 'Cliente paga'), h('span', { class: 'total direita' }, M.formatarReais(r.valorFinalCentavos))));
     if (r.novoGiftback) {
       previa.append(h('div', { class: 'caixa-info verde' }, 'Vai ganhar ', h('b', {}, M.formatarReais(r.novoGiftback.valorCentavos)),
         ` de giftback (${pct.valor()}%), válido até ${dia(r.novoGiftback.expiraEm)}.`));
@@ -968,6 +1037,17 @@ async function abrirSistema() {
   navegar();
   atualizarContador();
 }
+
+// Instalar como aplicativo (janela própria, sem barra de endereço): o Chrome avisa quando é possível.
+let pedidoInstalacao = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  pedidoInstalacao = e;
+  const b = document.getElementById('instalar');
+  b.hidden = false;
+  b.onclick = async () => { b.hidden = true; await pedidoInstalacao.prompt(); pedidoInstalacao = null; };
+});
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 async function iniciar() {
   if (MODO_TESTE) {

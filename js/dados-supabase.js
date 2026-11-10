@@ -144,10 +144,11 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
     },
 
     async obterCliente(id) {
-      const [linha, compras, gifts] = await Promise.all([
+      const [linha, compras, gifts, msgs] = await Promise.all([
         supabase.from('gb_clientes_resumo').select('*').eq('id', id).maybeSingle().then(ok),
         supabase.from('gb_compras').select('*').eq('cliente_id', id).order('data', { ascending: false }).order('seq', { ascending: false }).then(ok),
         supabase.from('gb_giftbacks').select('*').eq('cliente_id', id).order('criado_em', { ascending: false }).then(ok),
+        supabase.from('gb_mensagens').select('*').eq('cliente_id', id).order('devida_em', { ascending: false }).then(ok),
       ]);
       if (!linha) return null;
       const g = gifts.map(giftback);
@@ -155,7 +156,7 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       if (ativo) ativos.set(id, ativo); else ativos.delete(id);
       const i = resumos.findIndex((x) => x.id === id);
       if (i >= 0) resumos[i] = linha; else resumos.push(linha);
-      return { ...resumo(linha), giftback: ativo, historicoCompras: compras.map(compra), historicoGiftbacks: g };
+      return { ...resumo(linha), giftback: ativo, historicoCompras: compras.map(compra), historicoGiftbacks: g, historicoMensagens: (Array.isArray(msgs) ? msgs : []).map(mensagem) };
     },
 
     async clientePorTelefone(telefone) {

@@ -124,7 +124,8 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
       if (!c) return null;
       const compras = estado.compras.filter((p) => p.clienteId === id).sort((a, b) => b.data.localeCompare(a.data));
       const giftbacks = estado.giftbacks.filter((g) => g.clienteId === id).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
-      return { ...resumoCliente(c), historicoCompras: compras, historicoGiftbacks: giftbacks };
+      const mensagens = estado.mensagens.filter((m) => m.clienteId === id).sort((a, b) => b.devidaEm.localeCompare(a.devidaEm));
+      return { ...resumoCliente(c), historicoCompras: compras, historicoGiftbacks: giftbacks, historicoMensagens: mensagens };
     },
 
     async clientePorTelefone(telefone) {

@@ -113,7 +113,21 @@ main { max-width: 980px; margin: 0 auto; padding: 22px 16px 80px; }
 .resultado .nome { font-weight: 700; }
 .vazio { padding: 18px; text-align: center; color: var(--texto-suave); }
 
-.cliente-topo { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.cliente-topo { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.cliente-id { min-width: 0; }
+.cliente-acoes { display: flex; gap: 6px; flex: none; }
+.cliente-acoes .botao { padding: 7px 11px; }
+.cliente-ultima { margin-top: 4px; font-size: .9rem; font-weight: 600; color: var(--verde-escuro); }
+.gift-linha { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.gift-lado { text-align: right; font-size: .95rem; line-height: 1.5; }
+.gift-lado .urgente { color: var(--vermelho); font-weight: 800; }
+.gift-codigo { margin-top: 8px; font-size: .95rem; }
+.conta .desconto { color: var(--vermelho); font-weight: 700; }
+.conta.com-desconto .total { color: var(--verde-escuro); font-size: 1.45rem; }
+.historico .subabas { margin-bottom: 10px; }
+.instalar { border: 1px solid rgba(255,255,255,.5); background: transparent; color: #fff; border-radius: 999px; padding: 5px 12px; font-weight: 600; cursor: pointer; }
+.instalar:hover { background: rgba(255,255,255,.12); }
+.abas .curto, .busca .curto { display: none; }
 .cliente-nome { font-size: 1.5rem; }
 .cliente-dados { color: var(--texto-suave); font-size: .92rem; margin-top: 2px; }
 
@@ -201,10 +215,43 @@ tr.promo td { background: #fff8e8; }
 .variaveis { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
 .variaveis code { background: #ecebe4; border-radius: 6px; padding: 2px 7px; font-size: .82rem; }
 
+/* ── Modo compacto: janela estreita encaixada em cima do PDV (até 720px de largura) ── */
+@media (max-width: 720px) {
+  .topo { padding: 6px 10px; gap: 6px; flex-wrap: nowrap; }
+  .marca-loja, .usuario, .instalar { display: none !important; }
+  .marca-nome { font-size: .95rem; white-space: nowrap; }
+  .abas { gap: 2px; flex-wrap: nowrap; overflow-x: auto; }
+  .abas a { padding: 6px 10px; font-size: .88rem; white-space: nowrap; }
+  .abas .longo { display: none; }
+  .abas .curto, .busca .curto { display: inline; }
+  .busca .longo { display: none; }
+  .modo { margin-left: auto; font-size: .62rem; padding: 3px 7px; }
+  .faixa { padding: 5px 10px; font-size: .85rem; }
+  main { padding: 10px 10px 60px; }
+  #tela > .titulo-tela:first-child { display: none; }
+  .busca { flex-direction: row; gap: 6px; }
+  .busca input { font-size: 1.15rem; padding: 11px 12px; }
+  .busca .botao { padding: 8px 10px; white-space: nowrap; }
+  .numeros { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 10px; }
+  .numero { padding: 8px 12px; }
+  .numero b { font-size: 1.15rem; }
+  .cartao { padding: 12px 14px; }
+  .cliente-nome { font-size: 1.2rem; }
+  .gift { margin-top: 10px; padding: 12px 14px; }
+  .gift-valor { font-size: 2rem; }
+  .lancar { margin-top: 10px; }
+  .lancar > h3, .lancar > p.suave { display: none; }
+  .cliente-ultima { font-size: .85rem; }
+  .conta { margin: 6px 0; }
+  .valor-linha input { width: 140px; font-size: 1.35rem; }
+  .valor-linha .botao.grande { padding: 10px 14px; font-size: 1rem; }
+  .resultado { padding: 8px 12px; }
+}
+
 @media (max-width: 640px) {
   .topo { padding: 10px 12px; gap: 10px; }
   .modo { margin-left: 0; }
-  .busca { flex-direction: column; }
+  .busca .botao { padding: 8px 10px; }
   .msg { grid-template-columns: 1fr; }
   .msg-acoes { flex-direction: row; }
   .gift-valor { font-size: 2rem; }
