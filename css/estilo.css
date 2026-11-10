@@ -193,6 +193,41 @@ h2.secao { font-size: 1.05rem; margin: 22px 0 10px; color: var(--verde-escuro); 
 .barra-salvar { position: sticky; bottom: 0; background: var(--fundo); padding: 12px 0; margin-top: 10px; }
 .variaveis code { cursor: help; }
 
+/* Matriz RFM */
+.rfm-topo { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, 1fr); gap: 14px; align-items: start; }
+.rfm-matriz { display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(5, 74px); gap: 3px; border-radius: var(--raio); overflow: hidden; }
+.rfm-bloco { border: 0; color: #fff; text-align: right; padding: 8px 10px; cursor: pointer; display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-end; line-height: 1.2; transition: opacity .15s, filter .15s; min-width: 0; }
+.rfm-bloco:hover { filter: brightness(1.08); }
+.rfm-bloco.apagado { opacity: .35; }
+.rfm-nome { font-weight: 700; font-size: .84rem; }
+.rfm-bloco { overflow: hidden; }
+.rfm-num { font-size: 1.25rem; font-weight: 800; }
+.rfm-pct { font-size: .74rem; opacity: .9; }
+.rfm-eixo-x, .rfm-eixo-y { font-size: .76rem; color: var(--texto-suave); margin: 4px 0; }
+.rfm-eixo-x { text-align: center; }
+.rfm-numeros { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 16px; }
+.rfm-numeros div { display: flex; flex-direction: column; }
+.rfm-numeros b { font-size: 1.05rem; }
+.rfm-ponto { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+th.ordenavel { cursor: pointer; text-decoration: underline dotted; }
+
+/* Campanhas */
+.campanha { display: block; width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.campanha + .campanha { margin-top: 12px; }
+.campanha:hover { border-color: var(--verde); }
+.barra { height: 8px; background: #e7e4d9; border-radius: 999px; overflow: hidden; }
+.barra-cheia { height: 100%; background: var(--verde); border-radius: 999px; transition: width .2s; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--linha); background: #fff; border-radius: 999px; padding: 6px 12px; font-weight: 600; cursor: pointer; font-size: .9rem; }
+textarea.entrada { line-height: 1.4; resize: vertical; }
+@media (max-width: 860px) {
+  .rfm-topo { grid-template-columns: 1fr; }
+  .rfm-matriz { grid-template-rows: repeat(5, 62px); }
+  .rfm-nome { font-size: .74rem; }
+  .rfm-num { font-size: 1rem; }
+  .rfm-pct { display: none; }
+}
+
 /* Vendas do PDV */
 .venda + .venda { margin-top: 12px; }
 tr.promo td { background: #fff8e8; }

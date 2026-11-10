@@ -4,6 +4,7 @@ import * as M from './motor.js';
 import { criarDadosLocal } from './dados-local.js';
 import { criarDadosSupabase } from './dados-supabase.js';
 import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js';
+import { criarTelasExtras } from './telas-extra.js';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -1002,7 +1003,15 @@ async function depoisDoLogin() {
 
 // ───────────────────────── navegação ─────────────────────────
 
-const TELAS = { caixa: telaCaixa, mensagens: telaMensagens, uniplus: telaUniplus, clientes: telaClientes, config: telaConfig };
+const extras = criarTelasExtras({
+  h, trocar, tentar, avisar, tela, estado, nomeCompleto, dia, hoje, abrirWhatsApp, valorGift,
+  dados: () => dados, config: () => config,
+});
+const TELAS = {
+  caixa: telaCaixa, mensagens: telaMensagens, uniplus: telaUniplus, clientes: telaClientes,
+  relatorios: extras.telaRelatorios, campanhas: extras.telaCampanhas,
+  config: telaConfig,
+};
 
 function navegar() {
   const aba = (location.hash || '#caixa').slice(1);

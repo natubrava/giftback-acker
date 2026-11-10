@@ -320,6 +320,42 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
       salvar();
     },
 
+    // ───────────── campanhas ─────────────
+    async listarCampanhas() {
+      return (estado.campanhas || []).slice().reverse().map((c) => {
+        const ms = estado.mensagens.filter((m) => m.campanhaId === c.id);
+        return { ...c, total: ms.length, enviadas: ms.filter((m) => m.status === 'enviada').length,
+          puladas: ms.filter((m) => m.status === 'pulada').length, pendentes: ms.filter((m) => m.status === 'pendente').length };
+      });
+    },
+
+    async criarCampanha({ nome, texto, publico = '', dataLimite = null, clienteIds }) {
+      if (!String(nome || '').trim() || !String(texto || '').trim()) throw new Error('Informe o nome e a mensagem da campanha.');
+      if (!clienteIds?.length) throw new Error('Nenhum cliente no grupo escolhido.');
+      const c = { id: novoId(), nome: nome.trim(), texto, publico, dataLimite, criadaEm: agoraISO() };
+      estado.campanhas = [...(estado.campanhas || []), c];
+      const hoje = diaSP(relogio());
+      for (const clienteId of clienteIds) {
+        estado.mensagens.push({ id: novoId(), clienteId, giftbackId: null, campanhaId: c.id, tipo: 'campanha', devidaEm: hoje, status: 'pendente', enviadaEm: null, origem: 'acker' });
+      }
+      salvar();
+      return c;
+    },
+
+    async obterCampanha(id) {
+      const campanha = (estado.campanhas || []).find((c) => c.id === id);
+      if (!campanha) return null;
+      const destinatarios = estado.mensagens.filter((m) => m.campanhaId === id)
+        .map((m) => ({ id: m.id, status: m.status, enviadaEm: m.enviadaEm, cliente: clientePorId(m.clienteId) })).filter((d) => d.cliente);
+      return { campanha, destinatarios };
+    },
+
+    async excluirCampanha(id) {
+      estado.campanhas = (estado.campanhas || []).filter((c) => c.id !== id);
+      estado.mensagens = estado.mensagens.filter((m) => m.campanhaId !== id);
+      salvar();
+    },
+
     /** Compras lançadas hoje (para o resumo da tela do caixa). */
     async resumoDoDia() {
       const hoje = diaSP(relogio());

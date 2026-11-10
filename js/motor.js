@@ -88,6 +88,7 @@ export const TIPOS_MENSAGEM = Object.freeze({
   aniversario: 'Aniversário',
   recompra90: 'Recompra 90 dias',
   recompra180: 'Recompra 180 dias',
+  campanha: 'Campanha',
 });
 
 /** Variáveis que podem ser usadas nos textos, com o que significam (para a tela de modelos). */

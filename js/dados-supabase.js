@@ -22,6 +22,9 @@ const compra = (r) => r && ({
   valorFinalCentavos: r.valor_final_centavos, codigoUsado: r.codigo_usado, giftbackUsadoId: r.giftback_usado_id,
   giftbackGeradoId: r.giftback_gerado_id, giftbackSubstituidoId: r.giftback_substituido_id, status: r.status, origem: r.origem,
 });
+const campanha = (r) => r && ({
+  id: r.id, nome: r.nome, texto: r.texto, publico: r.publico, dataLimite: r.data_limite, criadaEm: r.criada_em,
+});
 const mensagem = (r) => r && ({
   id: r.id, clienteId: r.cliente_id, giftbackId: r.giftback_id, tipo: r.tipo, devidaEm: r.devida_em,
   status: r.status, enviadaEm: r.enviada_em, origem: r.origem,
@@ -272,6 +275,44 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
             .in('id', substituidas).eq('status', 'pendente'));
         }
       }
+    },
+
+    // ───────────── campanhas ─────────────
+    async listarCampanhas() {
+      const [camps, msgs] = await Promise.all([
+        supabase.from('gb_campanhas').select('*').order('criada_em', { ascending: false }).then(ok),
+        todos(() => supabase.from('gb_mensagens').select('campanha_id, status').not('campanha_id', 'is', null).order('id')),
+      ]);
+      return camps.map((c) => {
+        const ms = msgs.filter((m) => m.campanha_id === c.id);
+        return { ...campanha(c), total: ms.length, enviadas: ms.filter((m) => m.status === 'enviada').length,
+          puladas: ms.filter((m) => m.status === 'pulada').length, pendentes: ms.filter((m) => m.status === 'pendente').length };
+      });
+    },
+
+    async criarCampanha({ nome, texto, publico = '', dataLimite = null, clienteIds }) {
+      if (!String(nome || '').trim() || !String(texto || '').trim()) throw new Error('Informe o nome e a mensagem da campanha.');
+      if (!clienteIds?.length) throw new Error('Nenhum cliente no grupo escolhido.');
+      const c = ok(await supabase.from('gb_campanhas').insert({ nome: nome.trim(), texto, publico, data_limite: dataLimite }).select().single());
+      const hoje = diaSP(relogio());
+      const linhas = clienteIds.map((cliente_id) => ({ cliente_id, campanha_id: c.id, tipo: 'campanha', devida_em: hoje, status: 'pendente' }));
+      for (let i = 0; i < linhas.length; i += 500) ok(await supabase.from('gb_mensagens').insert(linhas.slice(i, i + 500)));
+      return campanha(c);
+    },
+
+    async obterCampanha(id) {
+      const c = ok(await supabase.from('gb_campanhas').select('*').eq('id', id).maybeSingle());
+      if (!c) return null;
+      const ms = await todos(() => supabase.from('gb_mensagens').select('*, cliente:gb_clientes(*)').eq('campanha_id', id).order('id'));
+      return {
+        campanha: campanha(c),
+        destinatarios: ms.filter((m) => m.cliente).map((m) => ({ id: m.id, status: m.status, enviadaEm: m.enviada_em, cliente: cliente(m.cliente) }))
+          .sort((a, b) => `${a.cliente.nome} ${a.cliente.sobrenome}`.localeCompare(`${b.cliente.nome} ${b.cliente.sobrenome}`, 'pt-BR')),
+      };
+    },
+
+    async excluirCampanha(id) {
+      ok(await supabase.from('gb_campanhas').delete().eq('id', id));
     },
 
     /** Compras lançadas hoje (para o resumo da tela do caixa). */
