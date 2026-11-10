@@ -1,15 +1,11 @@
 // telas-extra.js — Telas "Relatórios" (matriz RFM) e "Campanhas".
 // Recebe do app.js as ferramentas de tela (h, trocar, avisar...) para não duplicar código.
 import * as M from './motor.js';
-import { SEGMENTOS_RFM, classificarRFM, resumoGrupo, filtrarPublico, descreverPublico } from './rfm.js';
+import { SEGMENTOS_RFM, classificarRFM, resumoGrupo, filtrarPublico, descreverPublico, segmentoRFM, limitesRFM, explicarSegmento } from './rfm.js';
 
-// Posição de cada categoria na matriz 5x5 (linhas: frequência 5 → 1; colunas: recência 1 → 5).
-const AREAS = `
-  "nao_pode_perder nao_pode_perder fiel fiel campeao"
-  "em_risco em_risco fiel fiel campeao"
-  "em_risco em_risco atencao possivel_fiel possivel_fiel"
-  "hibernando hibernando quase_hibernando possivel_fiel possivel_fiel"
-  "hibernando hibernando quase_hibernando promissor novo"`;
+// Em qual quadradinho da grade 5x5 aparece o nome de cada categoria (coluna = recência R, linha = frequência/valor FM).
+const ROTULO = { nao_pode_perder: '1,5', fiel: '3,5', campeao: '5,5', em_risco: '1,4', atencao: '3,3', possivel_fiel: '4,3',
+  hibernando: '1,2', quase_hibernando: '3,2', promissor: '4,1', novo: '5,1' };
 
 export function criarTelasExtras(ctx) {
   const { h, trocar, tentar, avisar, tela, estado, nomeCompleto, dia, hoje, abrirWhatsApp, valorGift } = ctx;
@@ -40,16 +36,60 @@ export function criarTelasExtras(ctx) {
     let atual = estado.segmentoRFM && porSeg[estado.segmentoRFM] ? estado.segmentoRFM : null;
     const geral = resumoGrupo(todos);
     const ativos90 = todos.filter((c) => c.rfm.diasSemComprar <= 90).length;
+    const limites = limitesRFM(todos);
+    const porCelula = {};
+    for (const c of todos) { const k = `${c.rfm.r},${c.rfm.fm}`; porCelula[k] = (porCelula[k] || 0) + 1; }
+
+    // Dica que aparece ao passar o mouse (igual à da Zoppy, com o "por quê")
+    const dica = h('div', { class: 'rfm-dica', hidden: true });
+    document.querySelector('.rfm-dica')?.remove();
+    document.body.append(dica);
+    function mostrarDica(id, e) {
+      const g = porSeg[id] || [];
+      const r = resumoGrupo(g);
+      const s = SEGMENTOS_RFM[id];
+      trocar(dica,
+        h('div', { class: 'linha-flex' }, h('span', { class: 'rfm-ponto', style: `background:${s.cor}` }), h('b', {}, s.nome)),
+        h('div', { class: 'pequeno', style: 'margin-top:4px' }, `${r.clientes} clientes · ${pct(r.clientes, todos.length)} da base`),
+        h('div', { class: 'pequeno' }, `Ticket médio ${M.formatarReais(r.ticketMedioCentavos)} · ${r.mediaDiasSemComprar ?? '—'} dias sem comprar (média)`),
+        h('div', { class: 'pequeno' }, `Frequência: ${r.frequenciaMin} a ${r.frequenciaMax} compras`),
+        h('div', { class: 'pequeno suave', style: 'margin-top:6px' }, s.descricao));
+      dica.hidden = false;
+      mover(e);
+    }
+    function mover(e) {
+      const x = Math.min(e.clientX + 14, window.innerWidth - 300);
+      const y = Math.min(e.clientY + 14, window.innerHeight - dica.offsetHeight - 8);
+      dica.style.left = `${x}px`; dica.style.top = `${y}px`;
+    }
 
     const detalhe = h('div', { class: 'cartao rfm-detalhe' });
     const lista = h('div', { class: 'cartao', style: 'margin-top:14px' });
-    const blocos = {};
-    const matriz = h('div', { class: 'rfm-matriz', style: `grid-template-areas:${AREAS}` },
-      Object.entries(SEGMENTOS_RFM).map(([id, s]) => {
+    const blocos = {}; // id -> [quadradinhos]
+    const celulas = [];
+    for (let fm = 5; fm >= 1; fm--) {
+      for (let r = 1; r <= 5; r++) {
+        const id = segmentoRFM(r, fm);
+        const s = SEGMENTOS_RFM[id];
         const n = (porSeg[id] || []).length;
-        return (blocos[id] = h('button', { class: 'rfm-bloco', type: 'button', style: `grid-area:${id};background:${s.cor}`, title: s.descricao, onclick: () => selecionar(id) },
-          h('span', { class: 'rfm-nome' }, s.nome), h('span', { class: 'rfm-num' }, n), h('span', { class: 'rfm-pct' }, pct(n, todos.length) + ' da base')));
-      }));
+        const rotulo = ROTULO[id] === `${r},${fm}`;
+        const el = h('button', {
+          class: 'rfm-bloco' + (rotulo ? ' com-rotulo' : ''), type: 'button', style: `background:${s.cor}`,
+          'aria-label': `${s.nome}: ${n} clientes`,
+          onclick: () => selecionar(id),
+          onmouseenter: (e) => { realcar(id); mostrarDica(id, e); }, onmousemove: mover,
+          onmouseleave: () => { realcar(null); dica.hidden = true; },
+        },
+        rotulo ? [h('span', { class: 'rfm-nome' }, s.nome), h('span', { class: 'rfm-num' }, n), h('span', { class: 'rfm-pct' }, pct(n, todos.length) + ' da base')] : null,
+        h('span', { class: 'rfm-celula' }, porCelula[`${r},${fm}`] || ''));
+        (blocos[id] ??= []).push(el);
+        celulas.push(el);
+      }
+    }
+    const matriz = h('div', { class: 'rfm-matriz' }, celulas);
+    function realcar(id) {
+      for (const [sid, els] of Object.entries(blocos)) els.forEach((el) => el.classList.toggle('realce', !!id && sid === id));
+    }
 
     function selecionar(id) {
       atual = atual === id ? null : id;
@@ -58,7 +98,7 @@ export function criarTelasExtras(ctx) {
     }
 
     function desenhar() {
-      for (const [id, el] of Object.entries(blocos)) el.classList.toggle('apagado', !!atual && id !== atual);
+      for (const [id, els] of Object.entries(blocos)) els.forEach((el) => el.classList.toggle('apagado', !!atual && id !== atual));
       const grupo = atual ? (porSeg[atual] || []) : todos;
       const r = resumoGrupo(grupo);
       const s = atual ? SEGMENTOS_RFM[atual] : null;
@@ -67,7 +107,8 @@ export function criarTelasExtras(ctx) {
         h('div', { class: 'linha-flex' }, s ? h('span', { class: 'rfm-ponto', style: `background:${s.cor}` }) : null,
           h('h2', { style: 'font-size:1.15rem' }, s ? s.nome : 'Toda a base'),
           atual ? h('button', { class: 'link pequeno', onclick: () => selecionar(atual) }, 'ver todos') : null),
-        h('p', { class: 'suave pequeno', style: 'margin:4px 0 10px' }, s ? s.descricao : 'Clique numa categoria da matriz para ver os clientes dela.'),
+        h('p', { class: 'suave pequeno', style: 'margin:4px 0 6px' }, s ? s.descricao : 'Clique numa categoria da matriz para ver os clientes dela. Passe o mouse para ver o resumo.'),
+        s ? h('div', { class: 'caixa-info cinza pequeno', style: 'margin-bottom:10px' }, h('b', {}, 'Por que estão aqui: '), explicarSegmento(atual, limites, porSeg[atual] || [])) : null,
         h('div', { class: 'rfm-numeros' },
           numero('Clientes', `${r.clientes} (${pct(r.clientes, todos.length)})`),
           numero('Valor total de compras', M.formatarReais(r.totalCentavos)),
@@ -106,7 +147,7 @@ export function criarTelasExtras(ctx) {
           h('td', { class: 'num' }, c.compras),
           h('td', { class: 'num' }, M.formatarReais(Math.round(c.totalCentavos / c.compras))),
           h('td', { class: 'num' }, M.formatarReais(c.totalCentavos)),
-          h('td', {}, h('span', { class: 'etiqueta', style: `background:${SEGMENTOS_RFM[c.rfm.segmento].cor};color:#fff` }, SEGMENTOS_RFM[c.rfm.segmento].nome)),
+          h('td', {}, h('span', { class: 'etiqueta', title: `Recência ${c.rfm.r} · Frequência ${c.rfm.f} · Valor ${c.rfm.m}`, style: `background:${SEGMENTOS_RFM[c.rfm.segmento].cor};color:#fff` }, SEGMENTOS_RFM[c.rfm.segmento].nome)),
           h('td', {}, c.giftback ? valorGift(c.giftback) : ''))));
         rodape.textContent = v.length > 300 ? `Mostrando 300 de ${v.length}. Use a busca ou exporte a planilha para ver todos.` : `${v.length} cliente${v.length === 1 ? '' : 's'}.`;
       }
@@ -135,7 +176,7 @@ export function criarTelasExtras(ctx) {
           h('div', { class: 'rfm-eixo-x' }, 'comprou há mais tempo ← → comprou há pouco')),
         detalhe),
       h('p', { class: 'suave pequeno', style: 'margin-top:8px' },
-        'Como é calculado (mesmo método da Zoppy): cada cliente ganha uma nota de 1 a 5 em recência (da esquerda para a direita: comprou há mais tempo → comprou há pouco) e uma nota de frequência e valor gasto (de baixo para cima). As notas são relativas: os 20% melhores da base ganham 5, os 20% seguintes 4, e assim por diante. Atualiza sozinho a cada compra.'),
+        'Como é calculado (mesmo método da Zoppy, conferido cliente a cliente): cada cliente ganha nota de 1 a 5 em recência (colunas: da esquerda, comprou há mais tempo, para a direita, comprou há pouco) e em frequência e valor gasto (linhas: de baixo para cima). As notas são relativas à sua base: os 20% melhores ganham 5, os 20% seguintes 4, e assim por diante. Cada quadradinho mostra quantos clientes têm aquela combinação de notas. Atualiza sozinho a cada compra.'),
       lista);
     desenhar();
   }

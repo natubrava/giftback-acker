@@ -13,16 +13,39 @@ export const FAIXAS_RECENCIA = Object.freeze([30, 60, 90, 180]); // dias
 export const FAIXAS_FREQUENCIA = Object.freeze([2, 3, 5, 10]); // compras
 
 export const SEGMENTOS_RFM = Object.freeze({
-  campeao: { nome: 'Campeão', cor: '#7b4fd6', descricao: 'Comprou há pouco e compra sempre. São os melhores clientes.', sugestao: 'Agradeça, mostre novidades primeiro e peça indicação.' },
-  fiel: { nome: 'Fidelizado', cor: '#12a594', descricao: 'Compra com frequência e esteve na loja nos últimos 3 meses.', sugestao: 'Mantenha por perto: avise de reposições e ofertas do Club.' },
-  possivel_fiel: { nome: 'Possível leal', cor: '#2b8fd6', descricao: 'Comprou há pouco e já voltou algumas vezes.', sugestao: 'Incentive a próxima compra para virar fidelizado (lembrete do giftback).' },
-  novo: { nome: 'Novo', cor: '#3aa655', descricao: 'Primeira compra nos últimos 30 dias.', sugestao: 'Dê boas-vindas ao Club e lembre do giftback.' },
-  promissor: { nome: 'Promissor', cor: '#1f79b8', descricao: 'Uma compra só, entre 1 e 2 meses atrás.', sugestao: 'Convide para voltar antes que esfrie.' },
-  atencao: { nome: 'Precisa de atenção', cor: '#a25ad1', descricao: 'Cliente médio que não aparece há 2 a 3 meses.', sugestao: 'Mande uma oferta por tempo limitado.' },
-  quase_hibernando: { nome: 'Quase hibernando', cor: '#6c78c9', descricao: 'Comprou pouco e não aparece há 2 a 3 meses.', sugestao: 'Lembre da loja com um produto que ele já comprou.' },
-  nao_pode_perder: { nome: 'Não pode perder', cor: '#e06a80', descricao: 'Comprava muito (10+ compras) e sumiu há mais de 3 meses.', sugestao: 'Fale pessoalmente: vale um desconto maior para trazer de volta.' },
-  em_risco: { nome: 'Em risco', cor: '#c77ae0', descricao: 'Comprava com frequência e sumiu há mais de 3 meses.', sugestao: 'Campanha de resgate com desconto e prazo.' },
-  hibernando: { nome: 'Hibernando', cor: '#8a909c', descricao: 'Comprou 1 ou 2 vezes e não aparece há mais de 3 meses.', sugestao: 'Campanha de resgate em massa, sem gastar muito tempo.' },
+  campeao: { nome: 'Campeão', cor: '#7b4fd6', descricao: 'Comprou há pouco e está entre os que mais compram e mais gastam.', sugestao: 'Agradeça, mostre novidades primeiro e peça indicação.' },
+  fiel: { nome: 'Fidelizado', cor: '#12a594', descricao: 'Compra bastante e gasta bem, e não faz muito tempo que veio.', sugestao: 'Mantenha por perto: avise de reposições e ofertas do Club.' },
+  possivel_fiel: { nome: 'Possível leal', cor: '#2b8fd6', descricao: 'Comprou há pouco, com frequência e gasto ainda médios.', sugestao: 'Incentive a próxima compra para virar fidelizado (lembrete do giftback).' },
+  novo: { nome: 'Novo', cor: '#3aa655', descricao: 'Comprou há pouco, mas poucas vezes e gastou pouco (em geral, cliente recém-chegado).', sugestao: 'Dê boas-vindas ao Club e lembre do giftback.' },
+  promissor: { nome: 'Promissor', cor: '#1f79b8', descricao: 'Comprou não faz muito tempo, mas poucas vezes e gastou pouco.', sugestao: 'Convide para voltar antes que esfrie.' },
+  atencao: { nome: 'Precisa de atenção', cor: '#a25ad1', descricao: 'Frequência e gasto médios, e já faz um tempo que não volta.', sugestao: 'Mande uma oferta por tempo limitado.' },
+  quase_hibernando: { nome: 'Quase hibernando', cor: '#6c78c9', descricao: 'Comprou pouco e já faz um tempo que não volta.', sugestao: 'Lembre da loja com um produto que ele já comprou.' },
+  nao_pode_perder: { nome: 'Não pode perder', cor: '#e06a80', descricao: 'Estava entre os que mais compram e gastam, mas sumiu há muito tempo.', sugestao: 'Fale pessoalmente: vale um desconto maior para trazer de volta.' },
+  em_risco: { nome: 'Em risco', cor: '#c77ae0', descricao: 'Comprava e gastava bem, mas sumiu há muito tempo.', sugestao: 'Campanha de resgate com desconto e prazo.' },
+  hibernando: { nome: 'Hibernando', cor: '#8a909c', descricao: 'Comprou pouco e sumiu há muito tempo.', sugestao: 'Campanha de resgate em massa, sem gastar muito tempo.' },
+});
+
+/**
+ * Grade usada pela Zoppy (descoberta comparando os 601 clientes em 2026-11-10; é diferente da grade
+ * "padrão" de RFM da internet). R = recência 1..5 (5 = comprou há menos tempo), FM = frequência+valor 1..5.
+ *          R1   R2   R3   R4   R5
+ *   FM5   NPP  NPP  FID  FID  CAM
+ *   FM4   RIS  RIS  FID  FID  FID
+ *   FM3   RIS  RIS  ATE  POS  POS
+ *   FM2   HIB  HIB  QHI  POS  POS
+ *   FM1   HIB  HIB  QHI  PRO  NOV
+ */
+export const REGRAS_SEGMENTO = Object.freeze({
+  campeao: { r: [5, 5], fm: [5, 5] },
+  fiel: { r: [3, 5], fm: [4, 5] },
+  possivel_fiel: { r: [4, 5], fm: [2, 3] },
+  novo: { r: [5, 5], fm: [1, 1] },
+  promissor: { r: [4, 4], fm: [1, 1] },
+  atencao: { r: [3, 3], fm: [3, 3] },
+  quase_hibernando: { r: [3, 3], fm: [1, 2] },
+  nao_pode_perder: { r: [1, 2], fm: [5, 5] },
+  em_risco: { r: [1, 2], fm: [3, 4] },
+  hibernando: { r: [1, 2], fm: [1, 2] },
 });
 
 export function notaRecencia(dias) {
@@ -36,11 +59,47 @@ export function notaFrequencia(compras) {
 }
 
 /** Categoria a partir das notas de recência (r) e frequência (f). */
-export function segmentoRFM(r, f) {
-  if (r <= 2) return f >= 5 ? 'nao_pode_perder' : f >= 3 ? 'em_risco' : 'hibernando';
-  if (r === 3) return f >= 4 ? 'fiel' : f === 3 ? 'atencao' : 'quase_hibernando';
-  if (r === 4) return f >= 4 ? 'fiel' : f >= 2 ? 'possivel_fiel' : 'promissor';
-  return f >= 4 ? 'campeao' : f >= 2 ? 'possivel_fiel' : 'novo';
+export function segmentoRFM(r, fm) {
+  if (fm >= 5) return r === 5 ? 'campeao' : r >= 3 ? 'fiel' : 'nao_pode_perder';
+  if (fm === 4) return r >= 3 ? 'fiel' : 'em_risco';
+  if (fm === 3) return r >= 4 ? 'possivel_fiel' : r === 3 ? 'atencao' : 'em_risco';
+  if (fm === 2) return r >= 4 ? 'possivel_fiel' : r === 3 ? 'quase_hibernando' : 'hibernando';
+  return r === 5 ? 'novo' : r === 4 ? 'promissor' : r === 3 ? 'quase_hibernando' : 'hibernando';
+}
+
+/** Faixas reais de cada nota na base atual: dias sem comprar (R), compras (F) e total gasto (M). */
+export function limitesRFM(clientesRFM) {
+  const lim = { r: {}, f: {}, m: {} };
+  const junta = (tab, nota, v) => { const x = tab[nota] ??= [v, v]; x[0] = Math.min(x[0], v); x[1] = Math.max(x[1], v); };
+  for (const c of clientesRFM) {
+    if (!c.rfm) continue;
+    junta(lim.r, c.rfm.r, c.rfm.diasSemComprar);
+    junta(lim.f, c.rfm.f, c.compras);
+    junta(lim.m, c.rfm.m, c.totalCentavos || 0);
+  }
+  return lim;
+}
+
+/** Explica em palavras por que os clientes caem nesta categoria (com os números da base atual). */
+export function explicarSegmento(id, lim, grupo = []) {
+  const regra = REGRAS_SEGMENTO[id];
+  if (!regra) return '';
+  const faixa = (tab, de, ate) => {
+    const xs = [];
+    for (let n = de; n <= ate; n++) if (tab[n]) xs.push(...tab[n]);
+    return xs.length ? [Math.min(...xs), Math.max(...xs)] : null;
+  };
+  const dias = faixa(lim.r, regra.r[0], regra.r[1]);
+  // compras e gasto: os valores reais de quem está no grupo (mais fiel que a faixa das notas)
+  const mm = (xs) => (xs.length ? [Math.min(...xs), Math.max(...xs)] : null);
+  const compras = grupo.length ? mm(grupo.map((c) => c.compras)) : faixa(lim.f, regra.fm[0], regra.fm[1]);
+  const gasto = grupo.length ? mm(grupo.map((c) => c.totalCentavos || 0)) : faixa(lim.m, regra.fm[0], regra.fm[1]);
+  const plural = (a, b, um, varios) => (a === b ? `${a} ${a === 1 ? um : varios}` : `de ${a} a ${b} ${varios}`);
+  const reais = (c) => `R$ ${Math.round(c / 100).toLocaleString('pt-BR')}`;
+  const partes = [];
+  if (dias) partes.push(`última compra entre ${dias[0]} e ${dias[1]} dias atrás (nota de recência ${regra.r[0] === regra.r[1] ? regra.r[0] : `${regra.r[0]} a ${regra.r[1]}`})`);
+  if (compras && gasto) partes.push(`nota de frequência e valor ${regra.fm[0] === regra.fm[1] ? regra.fm[0] : `${regra.fm[0]} a ${regra.fm[1]}`} (${plural(compras[0], compras[1], 'compra', 'compras')}, de ${reais(gasto[0])} a ${reais(gasto[1])} gastos no total)`);
+  return partes.join('; ') + '.';
 }
 
 /**
