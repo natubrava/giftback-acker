@@ -2,8 +2,8 @@
 // O cálculo continua em motor.js; o banco grava tudo de uma vez (funções gb_registrar_compra
 // e gb_cancelar_compra) e garante as regras críticas (1 giftback ativo, só a equipe acessa).
 import {
-  CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila,
-} from './motor.js';
+  CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente,
+} from './.js?v=20261111001253';
 
 const PAGINA = 1000;
 
@@ -11,6 +11,7 @@ const PAGINA = 1000;
 const cliente = (r) => r && ({
   id: r.id, nome: r.nome, sobrenome: r.sobrenome || '', telefone: r.telefone, email: r.email, sexo: r.sexo,
   nascimento: r.nascimento, cpf: r.cpf, uniplusCodigo: r.uniplus_codigo, criadoEm: r.criado_em, origem: r.origem,
+  perfil: r.perfil || null,
   excluidoEm: r.excluido_em || null, excluidoPor: r.excluido_por || null, motivoExclusao: r.motivo_exclusao || null,
 });
 const giftback = (r) => r && ({
@@ -172,13 +173,13 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       return r ? resumo(r) : null; // pode vir um excluído (excluidoEm preenchido): a tela oferece restaurar
     },
 
-    async criarCliente({ nome, sobrenome = '', telefone, sexo = null, email = null, cpf = null, uniplusCodigo = null }) {
+    async criarCliente({ nome, sobrenome = '', telefone, sexo = null, email = null, cpf = null, uniplusCodigo = null, perfil = null }) {
       const tel = normalizarTelefone(telefone);
       if (!tel) throw new Error('Telefone inválido. Informe DDD + número.');
       if (!String(nome || '').trim()) throw new Error('Informe o nome do cliente.');
       const r = ok(await supabase.from('gb_clientes').insert({
         nome: nome.trim(), sobrenome: String(sobrenome || '').trim(), telefone: tel, sexo: sexo || null,
-        email: email || null, cpf: cpf || null, uniplus_codigo: uniplusCodigo,
+        email: email || null, cpf: cpf || null, uniplus_codigo: uniplusCodigo, perfil: perfil || null,
       }).select().single());
       const linha = { ...r, compras: 0, total_centavos: 0, ultima_compra: null };
       resumos.push(linha);
@@ -215,7 +216,7 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
         if (!tel) throw new Error('Telefone inválido. Informe DDD + número.');
         mudar.telefone = tel;
       }
-      for (const campo of ['nome', 'sobrenome', 'sexo', 'email', 'nascimento', 'cpf']) {
+      for (const campo of ['nome', 'sobrenome', 'sexo', 'email', 'nascimento', 'cpf', 'perfil']) {
         if (campo in dados) mudar[campo] = typeof dados[campo] === 'string' ? dados[campo].trim() || null : dados[campo];
       }
       if ('nome' in mudar && !mudar.nome) throw new Error('Informe o nome do cliente.');
@@ -225,7 +226,10 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
     },
 
     async lancarCompra({ clienteId, valorCentavos, usarGiftback = false, data = null, uniplusOperacaoId = null, itensExcluidos = null, percentual = null }) {
-      const config = percentual ? { ...configAtual(), percentual: Number(percentual) } : configAtual(); // % desta venda
+      let linhaCliente = resumos.find((r) => r.id === clienteId);
+      if (!linhaCliente) linhaCliente = ok(await supabase.from('gb_clientes').select('perfil').eq('id', clienteId).maybeSingle());
+      const doCliente = configParaCliente(configAtual(), linhaCliente); // perfil especial pode ter % e mínimo próprios
+      const config = percentual ? { ...doCliente, percentual: Number(percentual) } : doCliente; // % só desta venda
       const agora = data ? new Date(data) : relogio(); // venda do Uniplus: vale a data/hora da venda
       const atual = await giftbackAtivoAgora(clienteId); // sempre do banco, nunca da tela
       const r = calcularCompra({ valorCentavos, giftbackAtivo: atual, usarGiftback, config, agora });
@@ -339,6 +343,11 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
 
     async excluirCampanha(id) {
       ok(await supabase.from('gb_campanhas').delete().eq('id', id));
+    },
+
+    /** Clientes que compraram mais recentemente (lista da tela inicial do caixa). Usa a lista já carregada. */
+    async clientesRecentes(n = 8) {
+      return resumos.filter((r) => r.ultima_compra).sort((a, b) => String(b.ultima_compra).localeCompare(String(a.ultima_compra))).slice(0, n).map(resumo);
     },
 
     /** Compras lançadas hoje (para o resumo da tela do caixa). */

@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js';
-import { criarDadosLocal } from './dados-local.js';
-import { criarDadosSupabase } from './dados-supabase.js';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js';
-import { criarTelasExtras } from './telas-extra.js';
+import * as M from './.js?v=20261111001253';
+import { criarDadosLocal } from './.js?v=20261111001253';
+import { criarDadosSupabase } from './.js?v=20261111001253';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './.js?v=20261111001253';
+import { criarTelasExtras } from './.js?v=20261111001253';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -54,7 +54,7 @@ async function tentar(acao) {
   try { return await acao(); } catch (e) { console.error(e); avisar(e.message || 'Algo deu errado.', true); return undefined; }
 }
 
-const nomeCompleto = (c) => `${c.nome ?? ''} ${c.sobrenome ?? ''}`.trim();
+const nomeCompleto = (c) => `${c.nome ?? ''} ${c.sobrenome ?? ''}`.trim() || '(sem nome)';
 const dia = (iso) => (iso ? M.formatarDia(M.diaSP(iso)) : '');
 const hoje = () => M.diaSP(new Date());
 const ehCelular = () => /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
@@ -87,6 +87,10 @@ async function atualizarContador() {
   el.textContent = n;
   el.hidden = n === 0;
   el.classList.toggle('atrasado', atrasadas > 0);
+  const elBaixo = document.getElementById('contador-baixo');
+  elBaixo.textContent = n;
+  elBaixo.hidden = n === 0;
+  elBaixo.classList.toggle('atrasado', atrasadas > 0);
   document.title = n ? `(${n}) Giftback Acker` : 'Giftback Acker';
   const faixa = document.getElementById('faixa-mensagens');
   if (faixa) {
@@ -114,21 +118,46 @@ setInterval(() => { atualizarContador().catch(() => {}); }, 10 * 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizarContador().catch(() => {}); });
 
 /** Campo "% de giftback desta venda": começa no padrão das Configurações e vale só para esta venda. */
-function campoPercentual(aoMudar) {
-  const campo = h('input', { type: 'number', class: 'pct', min: 0.5, max: 100, step: 0.5, value: config.percentual, 'aria-label': '% de giftback desta venda' });
+function campoPercentual(aoMudar, base = config) {
+  const campo = h('input', { type: 'number', class: 'pct', min: 0.5, max: 100, step: 0.5, value: base.percentual, 'aria-label': '% de giftback desta venda' });
   const aviso = h('span', { class: 'suave pequeno' });
   const valor = () => {
     const n = Number(String(campo.value).replace(',', '.'));
-    return n > 0 && n <= 100 ? n : config.percentual;
+    return n > 0 && n <= 100 ? n : base.percentual;
   };
   const marcar = () => {
-    const mudou = valor() !== config.percentual;
+    const mudou = valor() !== base.percentual;
     campo.classList.toggle('alterado', mudou);
-    aviso.textContent = mudou ? `só nesta venda (padrão ${config.percentual}%)` : '';
+    aviso.textContent = mudou ? `só nesta venda (padrão ${base.percentual}%)` : '';
   };
   campo.addEventListener('input', () => { marcar(); aoMudar(); });
   const el = h('label', { class: 'linha-pct' }, 'Giftback desta venda:', campo, '%', aviso);
-  return { el, valor, configDaVenda: () => ({ ...config, percentual: valor() }), mudou: () => valor() !== config.percentual };
+  return { el, valor, configDaVenda: () => ({ ...base, percentual: valor() }), mudou: () => valor() !== base.percentual };
+}
+
+/** Etiqueta colorida do perfil especial do cliente (ou nada, se for cliente comum). */
+function etiquetaPerfil(cliente) {
+  const p = M.perfilDoCliente(cliente, config);
+  return p ? h('span', { class: 'etiqueta perfil', style: `background:${p.cor}` }, p.nome) : null;
+}
+
+/** Linha de cliente nas listas do caixa (resultado da busca e clientes recentes). */
+function linhaCliente(c, aoClicar, destaque = false) {
+  const p = M.perfilDoCliente(c, config);
+  return h('button', { class: 'resultado' + (destaque ? ' destaque' : ''), style: p ? `border-left:5px solid ${p.cor}` : '', onclick: aoClicar },
+    h('span', { class: 'resultado-id' }, h('span', { class: 'nome' }, nomeCompleto(c)), ' ', etiquetaPerfil(c), h('br'),
+      h('span', { class: 'suave pequeno' }, M.formatarTelefone(c.telefone), c.ultimaCompra ? h('span', { class: 'so-medio' }, ` · última compra ${dia(c.ultimaCompra)}`) : null)),
+    h('span', { class: 'espaco' }),
+    c.giftback
+      ? h('span', { class: 'etiqueta verde' }, valorGift(c.giftback), ' até ', dia(c.giftback.expiraEm).slice(0, 5))
+      : h('span', { class: 'etiqueta cinza' }, 'sem giftback'));
+}
+
+/** Lista para escolher o perfil do cliente nos formulários. */
+function seletorPerfil(atual = '') {
+  const sel = h('select', {}, h('option', { value: '' }, 'Cliente comum'), (config.perfis || []).map((p) => h('option', { value: p.id }, p.nome)));
+  sel.value = atual || '';
+  return sel;
 }
 
 // ───────────────────────── CAIXA ─────────────────────────
@@ -156,12 +185,7 @@ function telaCaixa() {
         h('p', { style: 'margin-top:10px' }, h('button', { class: 'botao principal', onclick: () => abrirNovo(tel ? { telefone: tel } : { nome: q }) }, '+ Cadastrar cliente novo'))));
       return;
     }
-    lista.forEach((c, i) => resultados.append(h('button', { class: 'resultado' + (i === 0 ? ' destaque' : ''), onclick: () => abrirCliente(c.id) },
-      h('span', {}, h('span', { class: 'nome' }, nomeCompleto(c)), h('br'), h('span', { class: 'suave pequeno' }, M.formatarTelefone(c.telefone))),
-      h('span', { class: 'espaco' }),
-      c.giftback
-        ? h('span', { class: 'etiqueta verde' }, valorGift(c.giftback), ' até ', dia(c.giftback.expiraEm).slice(0, 5))
-        : h('span', { class: 'etiqueta cinza' }, 'sem giftback'))));
+    lista.forEach((c, i) => resultados.append(linhaCliente(c, () => abrirCliente(c.id), i === 0)));
   }
 
   campo.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(buscar, 140); });
@@ -194,10 +218,11 @@ function telaCaixa() {
   }
 
   trocar(tela,
-    h('h1', { class: 'titulo-tela' }, 'Caixa'),
+    h('h1', { class: 'titulo-tela titulo-caixa' }, 'Caixa'),
     h('div', { class: 'busca' }, campo, h('button', { class: 'botao', onclick: () => abrirNovo() }, h('span', { class: 'longo' }, '+ Cliente novo'), h('span', { class: 'curto' }, '+ Novo'))),
     resultados, painel);
   if (!estado.clienteId && !estado.busca && !estado.novoPrefill) desenharResumoDoDia(painel);
+  window.__gbAbrirCliente = abrirCliente;
 
   if (estado.clienteId) painelCliente(painel, fechar);
   else if (estado.busca) buscar().then(() => { if (estado.abrirUnico && lista.length === 1) abrirCliente(lista[0].id); estado.abrirUnico = false; });
@@ -212,20 +237,25 @@ async function desenharResumoDoDia(painel) {
   try { r = await dados.resumoDoDia(); } catch { return; }
   if (estado.clienteId || painel.childElementCount) return; // o usuário já abriu um cliente
   const fila = (await dados.filaMensagens().catch(() => [])).length;
+  const recentes = dados.clientesRecentes ? await dados.clientesRecentes(8).catch(() => []) : [];
+  if (estado.clienteId || painel.childElementCount) return;
   trocar(painel,
-    h('div', { class: 'numeros' },
+    recentes.length ? h('div', { class: 'recentes' },
+      h('div', { class: 'rotulo-lista' }, 'Clientes recentes'),
+      h('div', { class: 'resultados' }, recentes.map((c) => linhaCliente(c, () => window.__gbAbrirCliente?.(c.id))))) : null,
+    h('div', { class: 'numeros so-largo', style: 'margin-top:16px' },
       h('div', { class: 'numero' }, h('b', {}, r.compras), h('span', {}, 'compras lançadas hoje')),
       h('div', { class: 'numero' }, h('b', {}, M.formatarReais(r.totalCentavos)), h('span', {}, 'valor lançado hoje')),
       h('div', { class: 'numero' }, h('b', {}, r.giftbacksGerados), h('span', {}, 'giftbacks gerados hoje')),
       h('a', { class: 'numero' + (fila ? ' alerta' : ''), href: '#mensagens', style: 'text-decoration:none;color:inherit' }, h('b', {}, fila), h('span', {}, 'mensagens para enviar'))),
-    r.ultimas.length ? h('div', { class: 'cartao' },
+    r.ultimas.length ? h('div', { class: 'cartao so-largo' },
       h('h3', { style: 'margin-bottom:8px' }, 'Últimas compras de hoje'),
       h('table', {}, h('tbody', {}, r.ultimas.map((c) => h('tr', { class: 'clicavel', onclick: () => { estado.clienteId = c.clienteId; estado.resultadoCompra = null; telaCaixa(); } },
         h('td', {}, String(c.data).slice(11, 16) ? new Date(c.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''),
         h('td', {}, c.cliente ? `${c.cliente.nome ?? ''} ${c.cliente.sobrenome ?? ''}`.trim() : ''),
         h('td', { class: 'num' }, M.formatarReais(c.valorFinalCentavos)),
         h('td', {}, c.giftbackUsadoId ? h('span', { class: 'etiqueta azul' }, 'usou giftback') : ''))))))
-      : h('p', { class: 'suave', style: 'text-align:center;margin-top:18px' }, 'Busque o cliente pelo nome, celular ou código do giftback para lançar a compra.'));
+      : (recentes.length ? null : h('p', { class: 'suave', style: 'text-align:center;margin-top:18px' }, 'Busque o cliente pelo nome, celular ou código do giftback para lançar a compra.')));
 }
 
 function painelNovoCliente(painel, prefill, aoSalvar, aoCancelar) {
@@ -235,6 +265,7 @@ function painelNovoCliente(painel, prefill, aoSalvar, aoCancelar) {
   const fSexo = h('select', {}, h('option', { value: '' }, 'Não informar'), h('option', { value: 'F' }, 'Feminino'), h('option', { value: 'M' }, 'Masculino'));
   const fEmail = h('input', { type: 'email', placeholder: 'opcional', autocomplete: 'off' });
   const jaExiste = h('div', {});
+  const fPerfilNovo = seletorPerfil('');
 
   fTel.addEventListener('blur', async () => {
     trocar(jaExiste);
@@ -246,7 +277,7 @@ function painelNovoCliente(painel, prefill, aoSalvar, aoCancelar) {
   });
 
   const salvar = () => tentar(async () => {
-    const c = await dados.criarCliente({ nome: fNome.value, sobrenome: fSobrenome.value, telefone: fTel.value, sexo: fSexo.value || null, email: fEmail.value.trim() || null });
+    const c = await dados.criarCliente({ nome: fNome.value, sobrenome: fSobrenome.value, telefone: fTel.value, sexo: fSexo.value || null, email: fEmail.value.trim() || null, perfil: fPerfilNovo.value || null });
     avisar('Cliente cadastrado no Club NatuBrava.');
     aoSalvar(c);
   });
@@ -258,7 +289,8 @@ function painelNovoCliente(painel, prefill, aoSalvar, aoCancelar) {
       h('label', { class: 'campo' }, h('span', {}, 'Nome'), fNome),
       h('label', { class: 'campo' }, h('span', {}, 'Sobrenome'), fSobrenome),
       h('label', { class: 'campo' }, h('span', {}, 'Sexo'), fSexo),
-      h('label', { class: 'campo' }, h('span', {}, 'E-mail'), fEmail)),
+      h('label', { class: 'campo' }, h('span', {}, 'E-mail'), fEmail),
+      h('label', { class: 'campo' }, h('span', {}, 'Perfil'), fPerfilNovo)),
     jaExiste,
     h('div', { class: 'linha-flex', style: 'margin-top:14px' },
       h('button', { class: 'botao principal', type: 'submit' }, 'Cadastrar e lançar compra'),
@@ -280,7 +312,7 @@ async function painelCliente(painel, aoFechar) {
   const historico = h('div', { class: 'cartao historico', id: 'historico' });
   const cabecalho = h('div', { class: 'cliente-topo' },
     h('div', { class: 'cliente-id' },
-      h('h2', { class: 'cliente-nome' }, nomeCompleto(c)),
+      h('h2', { class: 'cliente-nome' }, nomeCompleto(c), ' ', etiquetaPerfil(c)),
       h('div', { class: 'cliente-dados' }, M.formatarTelefone(c.telefone)),
       h('div', { class: 'cliente-ultima' }, ultima)),
     h('div', { class: 'cliente-acoes' },
@@ -317,7 +349,13 @@ async function painelCliente(painel, aoFechar) {
   else desenharFormulario(area, c, g, redesenhar);
 
   desenharHistorico(historico, c, redesenhar);
-  trocar(painel, h('div', { class: 'cartao' }, cabecalho, cartaoGift, area), historico);
+  const perfil = M.perfilDoCliente(c, config);
+  const regras = M.configParaCliente(config, c);
+  const avisoPerfil = perfil && (regras.percentual !== config.percentual || regras.compraMinimaCentavos !== config.compraMinimaCentavos)
+    ? h('div', { class: 'caixa-info pequeno', style: `margin-top:10px;background:${perfil.cor}1a;color:${perfil.cor}` },
+      h('b', {}, `Regras de ${perfil.nome}: `), `giftback de ${regras.percentual}%`,
+      regras.compraMinimaCentavos ? `, em compras a partir de ${M.formatarReais(regras.compraMinimaCentavos)}.` : ', sem compra mínima.') : null;
+  trocar(painel, h('div', { class: 'cartao', style: perfil ? `border-top:5px solid ${perfil.cor}` : '' }, cabecalho, avisoPerfil, cartaoGift, area), historico);
 }
 
 const STATUS_GIFT = { ativo: ['verde', 'ativo'], usado: ['azul', 'usado'], expirado: ['vermelha', 'venceu'], substituido: ['cinza', 'trocado por um maior'], cancelado: ['cinza', 'cancelado'] };
@@ -388,7 +426,8 @@ function desenharFormulario(area, cliente, g, redesenhar) {
   const previa = h('div', { class: 'previa' });
   const confirmar = h('button', { class: 'botao principal grande', disabled: true }, 'Confirmar compra');
   let usar = null; // null = ainda não decidiu (segue o padrão: usar sempre que puder)
-  const pct = campoPercentual(() => atualizar());
+  const regrasCliente = M.configParaCliente(config, cliente);
+  const pct = campoPercentual(() => atualizar(), regrasCliente);
 
   function atualizar() {
     const valor = M.lerReais(fValor.value);
@@ -416,7 +455,7 @@ function desenharFormulario(area, cliente, g, redesenhar) {
     } else if (r.novoDescartado) {
       previa.append(h('div', { class: 'caixa-info verde' }, `O cliente continua com o giftback atual de ${valorGift(g)}, que é maior que o desta compra (${M.formatarReais(r.novoDescartado.valorCentavos)}). Giftback não acumula: fica sempre o maior.`));
     } else {
-      previa.append(h('div', { class: 'caixa-info cinza' }, `Valor final abaixo de ${M.formatarReais(config.compraMinimaCentavos)}: esta compra não gera giftback.`));
+      previa.append(h('div', { class: 'caixa-info cinza' }, `Valor final abaixo de ${M.formatarReais(regrasCliente.compraMinimaCentavos)}: esta compra não gera giftback.`));
     }
     if (r.giftbackAnterior === 'substituido') {
       previa.append(h('div', { class: 'caixa-info ambar' }, `O giftback atual de ${valorGift(g)} não será usado e será trocado pelo novo de ${M.formatarReais(r.novoGiftback.valorCentavos)} (giftback não acumula: fica o maior).`));
@@ -499,8 +538,9 @@ function editarCliente(painel, c, depois) {
   fSexo.value = c.sexo || '';
   const fEmail = h('input', { type: 'email', value: c.email || '' });
   const fNasc = h('input', { type: 'date', value: c.nascimento || '' });
+  const fPerfil = seletorPerfil(c.perfil);
   trocar(painel, h('form', { class: 'cartao', onsubmit: (e) => { e.preventDefault(); tentar(async () => {
-    await dados.atualizarCliente(c.id, { nome: fNome.value, sobrenome: fSobrenome.value, telefone: fTel.value, sexo: fSexo.value || null, email: fEmail.value, nascimento: fNasc.value || null });
+    await dados.atualizarCliente(c.id, { nome: fNome.value, sobrenome: fSobrenome.value, telefone: fTel.value, sexo: fSexo.value || null, email: fEmail.value, nascimento: fNasc.value || null, perfil: fPerfil.value || null });
     avisar('Cadastro atualizado.'); depois();
   }); } },
     h('h2', { class: 'titulo-tela' }, 'Editar cliente'),
@@ -510,7 +550,8 @@ function editarCliente(painel, c, depois) {
       h('label', { class: 'campo' }, h('span', {}, 'WhatsApp'), fTel),
       h('label', { class: 'campo' }, h('span', {}, 'Sexo'), fSexo),
       h('label', { class: 'campo' }, h('span', {}, 'E-mail (opcional)'), fEmail),
-      h('label', { class: 'campo' }, h('span', {}, 'Nascimento (opcional)'), fNasc)),
+      h('label', { class: 'campo' }, h('span', {}, 'Nascimento (opcional)'), fNasc),
+      h('label', { class: 'campo' }, h('span', {}, 'Perfil (parceria ou família)'), fPerfil)),
     h('div', { class: 'linha-flex', style: 'margin-top:14px' },
       h('button', { class: 'botao principal', type: 'submit' }, 'Salvar'),
       h('button', { class: 'botao', type: 'button', onclick: depois }, 'Cancelar'),
@@ -637,7 +678,8 @@ async function telaUniplus() {
     const fTel = h('input', { type: 'tel', class: 'entrada', style: 'max-width:200px', value: v.telefone ? M.formatarTelefone(v.telefone) : '', placeholder: 'WhatsApp do cliente' });
     const acoes = h('div', { class: 'linha-flex', style: 'margin-top:12px' });
     let usarDecidido = false;
-    const pct = campoPercentual(() => recalcular());
+    const regrasCliente = M.configParaCliente(config, v.clienteAcker);
+    const pct = campoPercentual(() => recalcular(), regrasCliente);
 
     function recalcular() {
       const base = M.baseDosItens(v.itens, marcados);
@@ -661,7 +703,7 @@ async function telaUniplus() {
           ? h('div', { class: 'caixa-info verde' }, 'Vai ganhar ', h('b', {}, M.formatarReais(r.novoGiftback.valorCentavos)), ` de giftback, válido até ${dia(r.novoGiftback.expiraEm)}.`)
           : r.novoDescartado
             ? h('div', { class: 'caixa-info verde' }, `Continua com o giftback atual de ${valorGift(g)} (maior que o desta compra).`)
-            : h('div', { class: 'caixa-info cinza' }, `Valor final abaixo de ${M.formatarReais(config.compraMinimaCentavos)}: não gera giftback.`));
+            : h('div', { class: 'caixa-info cinza' }, `Valor final abaixo de ${M.formatarReais(regrasCliente.compraMinimaCentavos)}: não gera giftback.`));
       } catch (e) { previa.append(h('div', { class: 'caixa-info vermelha' }, e.message)); }
     }
     usar.addEventListener('change', () => { usarDecidido = true; recalcular(); });
@@ -811,13 +853,56 @@ async function telaClientes() {
 
 async function telaConfig() {
   config = await dados.obterConfig();
-  const secoes = [['regras', 'Regras do giftback'], ['modelos', 'Modelos de mensagem'], ['dados', dados.modo === 'online' ? 'Dados' : 'Modo teste']];
+  const secoes = [['regras', 'Regras do giftback'], ['perfis', 'Perfis especiais'], ['modelos', 'Modelos de mensagem'], ['dados', dados.modo === 'online' ? 'Dados' : 'Modo teste']];
   const atual = secoes.some(([id]) => id === estado.secaoConfig) ? estado.secaoConfig : 'regras';
   const abas = h('div', { class: 'subabas' }, secoes.map(([id, nome]) =>
     h('button', { class: 'subaba' + (id === atual ? ' ativa' : ''), type: 'button', onclick: () => { estado.secaoConfig = id; telaConfig(); } }, nome)));
-  const conteudo = atual === 'regras' ? configRegras() : atual === 'modelos' ? configModelos()
+  const conteudo = atual === 'regras' ? configRegras() : atual === 'perfis' ? configPerfis() : atual === 'modelos' ? configModelos()
     : (dados.modo === 'online' ? cartaoDadosOnline() : cartaoModoTeste());
   trocar(tela, h('h1', { class: 'titulo-tela' }, 'Configurações'), abas, conteudo);
+}
+
+/** Perfis especiais (parcerias e família): nome, cor, % de giftback e compra mínima próprios. */
+function configPerfis() {
+  const perfis = (config.perfis || []).map((p) => ({ ...p }));
+  const lista = h('div', {});
+  function desenhar() {
+    trocar(lista, perfis.map((p, i) => {
+      const exemplo = h('span', { class: 'etiqueta perfil', style: `background:${p.cor}` }, p.nome || 'Perfil');
+      const nome = h('input', { type: 'text', value: p.nome, oninput: (e) => { p.nome = e.target.value; exemplo.textContent = p.nome || 'Perfil'; } });
+      const cor = h('input', { type: 'color', value: p.cor || '#2f6b3c', style: 'padding:2px;height:42px', oninput: (e) => { p.cor = e.target.value; exemplo.style.background = p.cor; } });
+      const pctCampo = h('input', { type: 'number', min: 0, max: 100, step: 0.5, placeholder: `padrão (${config.percentual}%)`, value: p.percentual ?? '', oninput: (e) => { p.percentual = e.target.value === '' ? null : Number(e.target.value); } });
+      const minimo = h('input', { type: 'text', inputMode: 'decimal', placeholder: `padrão (${M.formatarReais(config.compraMinimaCentavos)})`, value: p.compraMinimaCentavos == null ? '' : (p.compraMinimaCentavos / 100).toFixed(2).replace('.', ','),
+        oninput: (e) => { p.compraMinimaCentavos = e.target.value.trim() === '' ? null : (M.lerReais(e.target.value) ?? null); } });
+      return h('div', { class: 'cartao' },
+        h('div', { class: 'linha-flex', style: 'margin-bottom:10px' }, exemplo, h('span', { class: 'espaco' }),
+          h('button', { class: 'link pequeno perigo-link', type: 'button', onclick: () => { if (confirm(`Remover o perfil "${p.nome}"? Os clientes com ele voltam a ser clientes comuns.`)) { perfis.splice(i, 1); desenhar(); } } }, 'remover')),
+        h('div', { class: 'grade' },
+          h('label', { class: 'campo' }, h('span', {}, 'Nome do perfil'), nome),
+          h('label', { class: 'campo' }, h('span', {}, 'Cor'), cor),
+          h('label', { class: 'campo' }, h('span', {}, 'Giftback (%)'), pctCampo),
+          h('label', { class: 'campo' }, h('span', {}, 'Compra mínima para ganhar (R$)'), minimo)));
+    }));
+  }
+  desenhar();
+  const salvar = () => tentar(async () => {
+    const limpos = perfis.filter((p) => String(p.nome || '').trim()).map((p, i) => ({
+      id: p.id || `perfil-${Date.now()}-${i}`, nome: p.nome.trim(), cor: p.cor || '#2f6b3c',
+      percentual: p.percentual == null || p.percentual === '' ? null : Number(p.percentual),
+      compraMinimaCentavos: p.compraMinimaCentavos == null ? null : Number(p.compraMinimaCentavos),
+    }));
+    if (limpos.some((p) => p.percentual != null && !(p.percentual > 0 && p.percentual <= 100))) throw new Error('O % de cada perfil deve ficar entre 0 e 100 (ou em branco para usar o padrão).');
+    config = await dados.salvarConfig({ perfis: limpos });
+    avisar('Perfis salvos.');
+    telaConfig();
+  });
+  return h('form', { onsubmit: (e) => { e.preventDefault(); salvar(); } },
+    h('div', { class: 'cartao' },
+      h('p', { class: 'suave' }, 'Para parcerias (nutricionistas, médicos, influenciadores) e família. O cliente continua na mesma lista, só ganha uma etiqueta colorida e pode ter regras próprias. Você escolhe o perfil no cadastro do cliente (Editar > Perfil).'),
+      h('p', { class: 'suave pequeno', style: 'margin-top:6px' }, 'Deixe o % ou a compra mínima em branco para usar a regra geral. Compra mínima 0 = ganha giftback em qualquer valor. Os clientes comuns não mudam em nada.')),
+    lista,
+    h('button', { class: 'botao', type: 'button', style: 'margin-top:12px', onclick: () => { perfis.push({ id: '', nome: 'Novo perfil', cor: '#5b6b7a', percentual: null, compraMinimaCentavos: null }); desenhar(); } }, '+ Novo perfil'),
+    h('div', { class: 'barra-salvar' }, h('button', { class: 'botao principal grande', type: 'submit' }, 'Salvar perfis')));
 }
 
 function configRegras() {
@@ -1001,7 +1086,7 @@ function telaLogin(mensagem = '') {
     await dados.recuperarSenha(fEmail.value, ENDERECO_APP);
     trocar(info, h('div', { class: 'caixa-info verde', style: 'margin-bottom:12px' }, 'Enviamos um e-mail com o link para criar uma senha nova.'));
   });
-  document.getElementById('abas').hidden = true;
+  mostrarMenus(false);
   trocar(tela, h('form', { class: 'cartao', style: 'max-width:420px;margin:40px auto', onsubmit: (e) => { e.preventDefault(); entrar(); } },
     h('h1', { class: 'titulo-tela' }, 'Entrar no Giftback Acker'),
     info,
@@ -1016,7 +1101,7 @@ function telaLogin(mensagem = '') {
 
 function telaNovaSenha() {
   const fSenha = h('input', { type: 'password', autocomplete: 'new-password' });
-  document.getElementById('abas').hidden = true;
+  mostrarMenus(false);
   trocar(tela, h('form', { class: 'cartao', style: 'max-width:420px;margin:40px auto', onsubmit: (e) => { e.preventDefault(); tentar(async () => {
     if (fSenha.value.length < 8) throw new Error('A senha precisa ter pelo menos 8 caracteres.');
     await dados.trocarSenha(fSenha.value);
@@ -1041,7 +1126,11 @@ async function depoisDoLogin() {
   trocar(usuario, h('span', { class: 'pequeno' }, s?.user?.email || ''), ' ',
     h('button', { class: 'link pequeno', style: 'color:#fff', onclick: () => tentar(async () => { await dados.sair(); location.reload(); }) }, 'Sair'));
   usuario.hidden = false;
-  document.getElementById('abas').hidden = false;
+  document.getElementById('mais-usuario').textContent = s?.user?.email || '';
+  const sair = document.getElementById('mais-sair');
+  sair.hidden = false;
+  sair.onclick = () => tentar(async () => { await dados.sair(); location.reload(); });
+  mostrarMenus(true);
   await abrirSistema();
 }
 
@@ -1060,12 +1149,33 @@ const TELAS = {
 function navegar() {
   const aba = (location.hash || '#caixa').slice(1);
   const desenhar = TELAS[aba] || telaCaixa;
-  document.querySelectorAll('#abas a').forEach((a) => a.classList.toggle('ativa', a.dataset.aba === (TELAS[aba] ? aba : 'caixa')));
+  const atual = TELAS[aba] ? aba : 'caixa';
+  document.querySelectorAll('#abas a').forEach((a) => a.classList.toggle('ativa', a.dataset.aba === atual));
+  document.querySelectorAll('#barra-baixo [data-aba]').forEach((a) => a.classList.toggle('ativa', a.dataset.aba === atual));
+  const mais = document.getElementById('baixo-mais');
+  mais.classList.toggle('ativa', mais.dataset.grupo.split(' ').includes(atual));
+  document.getElementById('folha-mais').hidden = true;
   trocar(tela);
   window.scrollTo(0, 0);
   tentar(() => desenhar());
   if (dados) atualizarContador().catch(() => {});
 }
+
+// Barra de ícones (janela estreita e celular)
+function mostrarMenus(sim) {
+  document.getElementById('abas').hidden = !sim;
+  document.getElementById('barra-baixo').classList.toggle('escondida', !sim);
+}
+document.getElementById('baixo-buscar').addEventListener('click', (e) => {
+  estado.clienteId = null; estado.busca = ''; estado.resultadoCompra = null;
+  if ((location.hash || '#caixa') === '#caixa') { e.preventDefault(); navegar(); }
+});
+document.getElementById('baixo-novo').addEventListener('click', (e) => {
+  estado.clienteId = null; estado.busca = ''; estado.novoPrefill = {};
+  if ((location.hash || '#caixa') === '#caixa') { e.preventDefault(); navegar(); }
+});
+document.getElementById('baixo-mais').addEventListener('click', () => { const f = document.getElementById('folha-mais'); f.hidden = !f.hidden; });
+document.getElementById('folha-mais').addEventListener('click', (e) => { if (e.target.id === 'folha-mais' || e.target.closest('a')) document.getElementById('folha-mais').hidden = true; });
 
 let sistemaAberto = false;
 
@@ -1073,6 +1183,7 @@ async function abrirSistema() {
   await dados.iniciar();
   config = await dados.obterConfig();
   document.getElementById('modo').hidden = dados.modo !== 'teste';
+  if (dados.modo === 'teste') document.getElementById('mais-usuario').textContent = 'MODO TESTE (dados só neste navegador)';
   document.getElementById('aba-uniplus').hidden = !dados.puxarVendasUniplus;
   if (sistemaAberto) { navegar(); atualizarContador(); return; }
   sistemaAberto = true;

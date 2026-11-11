@@ -50,6 +50,14 @@ export const CONFIG_PADRAO = Object.freeze({
       'Aproveite para voltar e escolher seus produtos favoritos! Estamos esperando por você. 😊\n' +
       'Um abraço!',
   }),
+  // Perfis especiais de cliente (parcerias e família). Cada um pode ter % de giftback e compra mínima
+  // próprios; em branco (null) usa a regra geral. compraMinimaCentavos = 0 significa "sem mínimo".
+  perfis: Object.freeze([
+    Object.freeze({ id: 'nutricionista', nome: 'Nutricionista', cor: '#0f8a7a', percentual: null, compraMinimaCentavos: null }),
+    Object.freeze({ id: 'medico', nome: 'Médico', cor: '#2563a8', percentual: null, compraMinimaCentavos: null }),
+    Object.freeze({ id: 'influenciador', nome: 'Influenciador', cor: '#b0358f', percentual: null, compraMinimaCentavos: null }),
+    Object.freeze({ id: 'familiar', nome: 'Familiar', cor: '#b3641a', percentual: null, compraMinimaCentavos: null }),
+  ]),
   // Assinatura colocada no fim de toda mensagem (como era na Zoppy). Deixe vazio para não usar.
   rodape: '💬 Dúvidas? É só responder por aqui — você está falando com a *{loja}*.',
   // Modelos de campanha (envio manual para um grupo de clientes). Vieram das campanhas feitas na Zoppy.
@@ -211,6 +219,25 @@ export function clienteCombina(cliente, busca) {
   }
   const nome = semAcento(`${cliente.nome ?? ''} ${cliente.sobrenome ?? ''}`);
   return q.split(/\s+/).every((parte) => nome.includes(parte));
+}
+
+// ───────────────────────── Perfis especiais ─────────────────────────
+
+/** Perfil especial do cliente (ou null se for cliente comum ou se o perfil não existe mais). */
+export function perfilDoCliente(cliente, config = CONFIG_PADRAO) {
+  if (!cliente?.perfil) return null;
+  return (config.perfis || []).find((p) => p.id === cliente.perfil) || null;
+}
+
+/** Regras que valem para este cliente: as gerais, trocando % e compra mínima se o perfil dele tiver os seus. */
+export function configParaCliente(config, cliente) {
+  const p = perfilDoCliente(cliente, config);
+  if (!p) return config;
+  return {
+    ...config,
+    percentual: p.percentual != null && p.percentual !== '' ? Number(p.percentual) : config.percentual,
+    compraMinimaCentavos: p.compraMinimaCentavos != null && p.compraMinimaCentavos !== '' ? Number(p.compraMinimaCentavos) : config.compraMinimaCentavos,
+  };
 }
 
 // ───────────────────────── Giftback ─────────────────────────

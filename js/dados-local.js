@@ -6,8 +6,8 @@
 // Toda regra de negócio vem de motor.js; aqui só se lê e grava.
 import {
   CONFIG_PADRAO, calcularCompra, giftbackVigente, gerarCodigo, planejarMensagens,
-  clienteCombina, normalizarTelefone, diaSP, organizarFila,
-} from './motor.js';
+  clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente,
+} from './.js?v=20261111001253';
 
 const CHAVE = 'giftback-acker-teste-v1';
 
@@ -163,14 +163,14 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
       return c ? resumoCliente(c) : null;
     },
 
-    async criarCliente({ nome, sobrenome = '', telefone, sexo = null, email = null, cpf = null, uniplusCodigo = null }) {
+    async criarCliente({ nome, sobrenome = '', telefone, sexo = null, email = null, cpf = null, uniplusCodigo = null, perfil = null }) {
       const tel = normalizarTelefone(telefone);
       if (!tel) throw new Error('Telefone inválido. Informe DDD + número.');
       if (!String(nome || '').trim()) throw new Error('Informe o nome do cliente.');
       if (estado.clientes.some((c) => c.telefone === tel)) throw new Error('Já existe um cliente com este telefone.');
       const c = {
         id: novoId(), nome: nome.trim(), sobrenome: String(sobrenome || '').trim(), telefone: tel,
-        sexo: sexo || null, email: email || null, nascimento: null, cpf: cpf || null, uniplusCodigo,
+        sexo: sexo || null, email: email || null, nascimento: null, cpf: cpf || null, uniplusCodigo, perfil: perfil || null,
         criadoEm: agoraISO(), origem: 'acker',
       };
       estado.clientes.push(c);
@@ -197,7 +197,7 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
         if (estado.clientes.some((x) => x.id !== id && x.telefone === tel)) throw new Error('Já existe outro cliente com este telefone.');
         c.telefone = tel;
       }
-      for (const campo of ['nome', 'sobrenome', 'sexo', 'email', 'nascimento', 'cpf']) {
+      for (const campo of ['nome', 'sobrenome', 'sexo', 'email', 'nascimento', 'cpf', 'perfil']) {
         if (campo in dados) c[campo] = typeof dados[campo] === 'string' ? dados[campo].trim() || null : dados[campo];
       }
       if (!c.nome) throw new Error('Informe o nome do cliente.');
@@ -216,7 +216,8 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
       if (uniplusOperacaoId != null && estado.compras.some((c) => c.uniplusOperacaoId === uniplusOperacaoId && c.status === 'ok')) {
         throw new Error('Esta venda do Uniplus já foi lançada.');
       }
-      const config = percentual ? { ...configAtual(), percentual: Number(percentual) } : configAtual(); // % desta venda
+      const doCliente = configParaCliente(configAtual(), cliente); // perfil especial pode ter % e mínimo próprios
+      const config = percentual ? { ...doCliente, percentual: Number(percentual) } : doCliente; // % só desta venda
       const agora = data ? new Date(data) : relogio();
       const atual = giftbackAtivoDe(clienteId);
       const r = calcularCompra({ valorCentavos, giftbackAtivo: atual, usarGiftback, config, agora });
@@ -393,6 +394,12 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
       estado.campanhas = (estado.campanhas || []).filter((c) => c.id !== id);
       estado.mensagens = estado.mensagens.filter((m) => m.campanhaId !== id);
       salvar();
+    },
+
+    /** Clientes que compraram mais recentemente (lista da tela inicial do caixa). */
+    async clientesRecentes(n = 8) {
+      return estado.clientes.filter((c) => !c.excluidoEm).map(resumoCliente).filter((c) => c.ultimaCompra)
+        .sort((a, b) => b.ultimaCompra.localeCompare(a.ultimaCompra)).slice(0, n);
     },
 
     /** Compras lançadas hoje (para o resumo da tela do caixa). */

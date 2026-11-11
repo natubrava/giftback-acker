@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icones/icone-192.png">
   <link rel="apple-touch-icon" href="icones/icone-192.png">
-  <link rel="stylesheet" href="css/estilo.css">
+  <link rel="stylesheet" href="css/estilo.css?v=20261111001253">
 </head>
 <body>
   <header class="topo">
@@ -33,6 +33,30 @@
   <div id="faixa-mensagens" class="faixa" hidden></div>
   <main id="tela"><p class="carregando">Carregando…</p></main>
   <div id="aviso" class="aviso" hidden></div>
-  <script type="module" src="js/app.js"></script>
+
+  <!-- Barra de ícones (aparece no celular e quando a janela fica estreita, em cima do PDV) -->
+  <nav class="barra-baixo" id="barra-baixo" aria-label="Menu">
+    <a href="#caixa" data-aba="caixa" id="baixo-buscar">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>Buscar</span></a>
+    <a href="#caixa" id="baixo-novo">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-3.9 3.1-7 7-7s7 3.1 7 7"/><path d="M19 7v6M16 10h6"/></svg><span>Novo</span></a>
+    <a href="#mensagens" data-aba="mensagens">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.2A8.5 8.5 0 1 1 21 12z"/></svg><span>Mensagens</span>
+      <b class="contador" id="contador-baixo" hidden>0</b></a>
+    <a href="#uniplus" data-aba="uniplus">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h8.9a1 1 0 0 0 1-.8L20 8H6.2"/><circle cx="9.5" cy="19.5" r="1.4"/><circle cx="17" cy="19.5" r="1.4"/></svg><span>PDV</span></a>
+    <button type="button" id="baixo-mais" data-grupo="clientes relatorios campanhas config">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>Mais</span></button>
+  </nav>
+  <div class="folha" id="folha-mais" hidden>
+    <div class="folha-caixa">
+      <a href="#clientes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-3.9 3.1-7 7-7s7 3.1 7 7"/><path d="M16 4.5a4 4 0 0 1 0 7M18 14.5c2.4.8 4 3.4 4 6.5"/></svg>Clientes</a>
+      <a href="#relatorios"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>Relatórios (matriz RFM)</a>
+      <a href="#campanhas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4l11 5V5L3 10z"/><path d="M14 8.5a4 4 0 0 1 0 7M7 14.5V19a1 1 0 0 0 1 1h2"/></svg>Campanhas</a>
+      <a href="#config"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2.1-1.2L14 3h-4l-.4 2.6a7 7 0 0 0-2.1 1.2l-2.4-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.4-.9a7 7 0 0 0 2.1 1.2L10 21h4l.4-2.6a7 7 0 0 0 2.1-1.2l2.4.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>Configurações</a>
+      <div class="folha-rodape"><span id="mais-usuario"></span><button type="button" class="link" id="mais-sair" hidden>Sair</button></div>
+    </div>
+  </div>
+  <script type="module" src="js/app.js?v=20261111001253"></script>
 </body>
 </html>
