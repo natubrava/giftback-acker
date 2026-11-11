@@ -542,3 +542,10 @@ body { background: linear-gradient(180deg, #f7f5ee 0%, #f1eee4 100%) fixed; }
 .historico-conteudo[hidden] { display: none; }
 .historico:not(.aberto) { padding-top: 10px; padding-bottom: 10px; }
 .historico-seta { font-size: 1.25rem; line-height: 1; }
+
+/* "x" para limpar o campo do valor */
+.campo-com-x { position: relative; flex: 1; min-width: 0; display: flex; }
+.campo-com-x input { flex: 1; width: 100%; min-width: 0; padding-right: 46px !important; }
+.limpar-campo { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border-radius: 50%; border: 0; background: #e6e3d8; color: #4d564f; font-size: 1.35rem; font-weight: 700; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0 0 2px; }
+.limpar-campo:hover { background: var(--vermelho-claro); color: var(--vermelho); }
+.limpar-campo[hidden] { display: none; }

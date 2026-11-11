@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261111163849';
-import { criarDadosLocal } from './dados-local.js?v=20261111163849';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261111163849';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111163849';
-import { criarTelasExtras } from './telas-extra.js?v=20261111163849';
+import * as M from './motor.js?v=20261111164545';
+import { criarDadosLocal } from './dados-local.js?v=20261111164545';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261111164545';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111164545';
+import { criarTelasExtras } from './telas-extra.js?v=20261111164545';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -596,10 +596,15 @@ function desenharFormulario(area, cliente, g, redesenhar) {
   fValor.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !confirmar.disabled) { e.preventDefault(); confirmar.focus(); } });
 
   fValor.id = 'valor-compra';
+  // "x" no fim do campo: limpa o valor com um clique (aparece só quando há algo digitado)
+  const limpar = h('button', { type: 'button', class: 'limpar-campo', title: 'Limpar o valor', 'aria-label': 'Limpar o valor', hidden: true }, '×');
+  const mostrarX = () => { limpar.hidden = !fValor.value; };
+  fValor.addEventListener('input', mostrarX);
+  limpar.onclick = () => { fValor.value = ''; fValor.dispatchEvent(new Event('input')); fValor.focus(); };
   trocar(area,
     h('div', { class: 'caixa-valor' },
       h('label', { class: 'caixa-valor-rotulo', for: 'valor-compra' }, 'Valor da compra', h('span', { class: 'obs' }, ' – produtos NÃO promocionais')),
-      h('div', { class: 'valor-linha' }, h('span', { class: 'prefixo' }, 'R$'), fValor),
+      h('div', { class: 'valor-linha' }, h('span', { class: 'prefixo' }, 'R$'), h('span', { class: 'campo-com-x' }, fValor, limpar)),
       pct.el),
     previa,
     confirmar);
