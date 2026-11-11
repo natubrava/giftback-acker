@@ -3,7 +3,7 @@
 // e gb_cancelar_compra) e garante as regras críticas (1 giftback ativo, só a equipe acessa).
 import {
   CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente,
-} from './.js?v=20261111001253';
+} from './motor.js?v=20261111001326';
 
 const PAGINA = 1000;
 
