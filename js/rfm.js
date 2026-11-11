@@ -7,7 +7,7 @@
 //   FM = média de F e M arredondada para baixo.
 //   A categoria sai da posição (R, FM) na grade 5x5 padrão de RFM.
 // As faixas fixas abaixo ficam só como referência/explicação.
-import { diaSP, diasEntre } from './motor.js?v=20261111164545';
+import { diaSP, diasEntre } from './motor.js?v=20261111200453';
 
 export const FAIXAS_RECENCIA = Object.freeze([30, 60, 90, 180]); // dias
 export const FAIXAS_FREQUENCIA = Object.freeze([2, 3, 5, 10]); // compras
@@ -177,6 +177,7 @@ export function filtrarPublico(clientesRFM, filtro = {}) {
   const segs = new Set(filtro.segmentos || []);
   return clientesRFM.filter((c) => {
     if (!c.rfm) return false;
+    if (c.semMensagens) return false; // cliente pediu para não receber mensagens
     if (segs.size && !segs.has(c.rfm.segmento)) return false;
     if (filtro.diasMin != null && filtro.diasMin !== '' && c.rfm.diasSemComprar < Number(filtro.diasMin)) return false;
     if (filtro.diasMax != null && filtro.diasMax !== '' && c.rfm.diasSemComprar > Number(filtro.diasMax)) return false;

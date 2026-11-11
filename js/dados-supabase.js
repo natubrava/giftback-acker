@@ -3,7 +3,7 @@
 // e gb_cancelar_compra) e garante as regras críticas (1 giftback ativo, só a equipe acessa).
 import {
   CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
-} from './motor.js?v=20261111164545';
+} from './motor.js?v=20261111200453';
 
 const PAGINA = 1000;
 
@@ -11,7 +11,7 @@ const PAGINA = 1000;
 const cliente = (r) => r && ({
   id: r.id, nome: r.nome, sobrenome: r.sobrenome || '', telefone: r.telefone, email: r.email, sexo: r.sexo,
   nascimento: r.nascimento, cpf: r.cpf, uniplusCodigo: r.uniplus_codigo, criadoEm: r.criado_em, origem: r.origem,
-  perfil: r.perfil || null,
+  perfil: r.perfil || null, semMensagens: !!r.sem_mensagens,
   excluidoEm: r.excluido_em || null, excluidoPor: r.excluido_por || null, motivoExclusao: r.motivo_exclusao || null,
 });
 const giftback = (r) => r && ({
@@ -221,6 +221,7 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       }
       if ('nome' in mudar && !mudar.nome) throw new Error('Informe o nome do cliente.');
       if ('sobrenome' in mudar && mudar.sobrenome == null) mudar.sobrenome = '';
+      if ('semMensagens' in dados) mudar.sem_mensagens = !!dados.semMensagens;
       ok(await supabase.from('gb_clientes').update(mudar).eq('id', id));
       return this.obterCliente(id);
     },
@@ -274,7 +275,7 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
         .select('*, giftback:gb_giftbacks(*), cliente:gb_clientes(*)')
         .eq('status', 'pendente').lte('devida_em', hoje).order('id'));
       const fila = linhas
-        .filter((m) => m.giftback?.status === 'ativo' && m.cliente)
+        .filter((m) => m.giftback?.status === 'ativo' && m.cliente && !m.cliente.sem_mensagens) // quem não quer mensagens fica fora
         .map((m) => ({ ...mensagem(m), giftback: giftback(m.giftback), cliente: cliente(m.cliente) }));
       return organizarFila(fila, hoje);
     },

@@ -7,7 +7,7 @@
 import {
   CONFIG_PADRAO, calcularCompra, giftbackVigente, gerarCodigo, planejarMensagens,
   clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
-} from './motor.js?v=20261111164545';
+} from './motor.js?v=20261111200453';
 
 const CHAVE = 'giftback-acker-teste-v1';
 
@@ -200,6 +200,7 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
       for (const campo of ['nome', 'sobrenome', 'sexo', 'email', 'nascimento', 'cpf', 'perfil']) {
         if (campo in dados) c[campo] = typeof dados[campo] === 'string' ? dados[campo].trim() || null : dados[campo];
       }
+      if ('semMensagens' in dados) c.semMensagens = !!dados.semMensagens;
       if (!c.nome) throw new Error('Informe o nome do cliente.');
       salvar();
       return resumoCliente(c);
@@ -310,7 +311,7 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
         if (m.status !== 'pendente' || m.devidaEm > hoje) continue;
         const giftback = estado.giftbacks.find((g) => g.id === m.giftbackId);
         const cliente = clientePorId(m.clienteId);
-        if (!giftback || !cliente || giftback.status !== 'ativo') continue;
+        if (!giftback || !cliente || giftback.status !== 'ativo' || cliente.semMensagens) continue; // quem não quer mensagens fica fora
         fila.push({ ...m, giftback, cliente });
       }
       return organizarFila(fila, hoje);

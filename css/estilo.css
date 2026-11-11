@@ -549,3 +549,27 @@ body { background: linear-gradient(180deg, #f7f5ee 0%, #f1eee4 100%) fixed; }
 .limpar-campo { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border-radius: 50%; border: 0; background: #e6e3d8; color: #4d564f; font-size: 1.35rem; font-weight: 700; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0 0 2px; }
 .limpar-campo:hover { background: var(--vermelho-claro); color: var(--vermelho); }
 .limpar-campo[hidden] { display: none; }
+
+/* ═══════════ Venda: promoção opcional, venda repetida, não quer mensagens (2026-11-11, noite) ═══════════ */
+.caixa-valor-topo { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin-bottom: 5px; }
+.caixa-valor-topo .caixa-valor-rotulo { margin-bottom: 0; }
+.botao-promo { flex: none; border: 1px dashed #c9a24a; background: #fffaf0; color: #7a5200; border-radius: 999px; padding: 2px 10px; font: inherit; font-size: .78rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.botao-promo:hover { background: var(--ambar-claro); }
+.botao-promo[hidden] { display: none; }
+.linha-promo { margin-top: 8px; }
+.linha-promo[hidden] { display: none; }
+.promo-rotulo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: .9rem; color: #7a5200; flex-wrap: wrap; }
+.promo-rotulo input { width: 130px; font-size: 1.15rem; font-weight: 700; padding: 4px 10px; border: 2px solid #d9a521; border-radius: 9px; background: #fffaf0; }
+.promo-rotulo .prefixo { font-weight: 700; color: var(--texto-suave); }
+.historico-resumo { display: flex; flex-wrap: wrap; gap: 4px 16px; background: #f3f8f1; border: 1px solid #d9e8d6; border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: .92rem; color: var(--verde-escuro); }
+.sem-msg { margin-left: 8px; vertical-align: 1px; }
+.sem-msg-opcao { margin-top: 14px; align-items: flex-start; }
+.previa .alerta-repetido { margin: 4px 0 6px; padding: 10px 14px; }
+.previa .alerta-repetido .alerta-titulo { font-size: 1.05rem; }
+@media (max-width: 420px) {
+  .caixa-valor-topo { flex-wrap: wrap; }
+  .promo-rotulo input { flex: 1; min-width: 0; width: auto; }
+}
+.linha-promo { margin-top: 6px; }
+.promo-rotulo input { font-size: 1.05rem; padding: 2px 8px; }
+.caixa-valor:has(.linha-promo:not([hidden])) .linha-pct { margin-top: 4px; }
