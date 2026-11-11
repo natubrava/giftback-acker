@@ -7,7 +7,7 @@
 import {
   CONFIG_PADRAO, calcularCompra, giftbackVigente, gerarCodigo, planejarMensagens,
   clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente,
-} from './motor.js?v=20261111001326';
+} from './motor.js?v=20261111085531';
 
 const CHAVE = 'giftback-acker-teste-v1';
 
@@ -414,6 +414,21 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
         giftbacksUsados: doDia.filter((c) => c.giftbackUsadoId).length,
         ultimas: doDia.slice(-5).reverse().map((c) => ({ ...c, cliente: clientePorId(c.clienteId) })),
       };
+    },
+
+    /** Mensagens de giftback dos últimos dias e as futuras (enviadas, puladas e na fila), para conferência. */
+    async historicoMensagens(diasAtras = 45) {
+      const desde = new Date(relogio().getTime() - diasAtras * 86400000).toISOString().slice(0, 10);
+      return estado.mensagens
+        .filter((m) => m.giftbackId && ['pendente', 'enviada', 'pulada'].includes(m.status) && m.devidaEm >= desde)
+        .map((m) => ({ ...m, giftback: estado.giftbacks.find((g) => g.id === m.giftbackId), cliente: clientePorId(m.clienteId) }))
+        .filter((m) => m.cliente && !m.cliente.excluidoEm && m.giftback)
+        .sort((a, b) => b.devidaEm.localeCompare(a.devidaEm));
+    },
+
+    /** Cópia de segurança: tudo num arquivo só. */
+    async exportarTudo() {
+      return { geradoEm: agoraISO(), origem: 'modo teste', ...estado };
     },
 
     /** Quantas mensagens já foram enviadas hoje (para o painel). */

@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261111001326';
-import { criarDadosLocal } from './dados-local.js?v=20261111001326';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261111001326';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111001326';
-import { criarTelasExtras } from './telas-extra.js?v=20261111001326';
+import * as M from './motor.js?v=20261111085531';
+import { criarDadosLocal } from './dados-local.js?v=20261111085531';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261111085531';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111085531';
+import { criarTelasExtras } from './telas-extra.js?v=20261111085531';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -149,8 +149,21 @@ function linhaCliente(c, aoClicar, destaque = false) {
       h('span', { class: 'suave pequeno' }, M.formatarTelefone(c.telefone), c.ultimaCompra ? h('span', { class: 'so-medio' }, ` · última compra ${dia(c.ultimaCompra)}`) : null)),
     h('span', { class: 'espaco' }),
     c.giftback
-      ? h('span', { class: 'etiqueta verde' }, valorGift(c.giftback), ' até ', dia(c.giftback.expiraEm).slice(0, 5))
+      ? h('span', { class: 'resultado-gift' },
+        h('span', { class: 'etiqueta verde' }, valorGift(c.giftback), ' até ', dia(c.giftback.expiraEm).slice(0, 5)),
+        c.giftback.minimoCentavos ? h('span', { class: 'gift-min' }, 'compra mín. ', M.formatarReais(c.giftback.minimoCentavos)) : null)
       : h('span', { class: 'etiqueta cinza' }, 'sem giftback'));
+}
+
+/** Liga a vírgula automática num campo de valor: digitar 20000 vira 200,00. */
+function comVirgulaAutomatica(campo) {
+  campo.inputMode = 'numeric';
+  if (campo.value) campo.value = M.mascararReais(campo.value);
+  campo.addEventListener('input', () => {
+    campo.value = M.mascararReais(campo.value);
+    campo.setSelectionRange?.(campo.value.length, campo.value.length);
+  });
+  return campo;
 }
 
 /** Lista para escolher o perfil do cliente nos formulários. */
@@ -422,7 +435,7 @@ function desenharHistorico(caixa, c, redesenhar) {
 }
 
 function desenharFormulario(area, cliente, g, redesenhar) {
-  const fValor = h('input', { type: 'text', inputMode: 'decimal', placeholder: 'valor', title: 'Valor dos produtos que NÃO estão em promoção', autocomplete: 'off', 'aria-label': 'Valor da compra (itens não promocionais)' });
+  const fValor = h('input', { type: 'text', inputMode: 'numeric', placeholder: '0,00', title: 'Valor dos produtos que NÃO estão em promoção', autocomplete: 'off', 'aria-label': 'Valor da compra (itens não promocionais)' });
   const previa = h('div', { class: 'previa' });
   const confirmar = h('button', { class: 'botao principal grande', disabled: true }, 'Confirmar compra');
   let usar = null; // null = ainda não decidiu (segue o padrão: usar sempre que puder)
@@ -469,6 +482,7 @@ function desenharFormulario(area, cliente, g, redesenhar) {
     });
   }
 
+  comVirgulaAutomatica(fValor);
   fValor.addEventListener('input', atualizar);
   fValor.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !confirmar.disabled) { e.preventDefault(); confirmar.focus(); } });
 
@@ -573,7 +587,68 @@ function editarCliente(painel, c, depois) {
 
 // ───────────────────────── MENSAGENS ─────────────────────────
 
+const ABAS_MENSAGENS = [['fila', 'Para enviar'], ['proximas', 'Próximas'], ['historico', 'Enviadas e puladas']];
+
+function abasMensagens() {
+  const atual = estado.abaMensagens || 'fila';
+  return h('div', { class: 'subabas' }, ABAS_MENSAGENS.map(([id, nome]) =>
+    h('button', { class: 'subaba' + (id === atual ? ' ativa' : ''), type: 'button', onclick: () => { estado.abaMensagens = id; telaMensagens(); } }, nome)));
+}
+
+/** Conferência das mensagens: as que ainda vão entrar na fila e as que já foram enviadas ou puladas. */
+async function telaMensagensConferencia(aba) {
+  const todas = await dados.historicoMensagens(45);
+  const hj = hoje();
+  const lista = aba === 'proximas'
+    ? todas.filter((m) => m.status === 'pendente' && m.devidaEm > hj && m.giftback.status === 'ativo').sort((a, b) => a.devidaEm.localeCompare(b.devidaEm))
+    : todas.filter((m) => m.status !== 'pendente');
+  const filtro = h('input', { type: 'search', class: 'entrada', placeholder: 'Buscar cliente', style: 'max-width:280px' });
+  const soPuladas = h('input', { type: 'checkbox' });
+  const corpo = h('tbody');
+  const rodape = h('p', { class: 'suave pequeno', style: 'margin-top:8px' });
+  const texto = (m) => M.mensagemCompleta(m.tipo, { cliente: m.cliente, giftback: m.giftback, config, hoje: hoje() });
+  function linhas() {
+    const v = lista.filter((m) => M.clienteCombina(m.cliente, filtro.value) && (!soPuladas.checked || m.status === 'pulada'));
+    trocar(corpo, v.slice(0, 300).map((m) => {
+      const vigente = m.giftback.status === 'ativo';
+      const situacao = m.status === 'enviada'
+        ? [h('span', { class: 'etiqueta verde' }, 'enviada'), m.enviadaEm ? ` ${new Date(m.enviadaEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : (m.origem === 'zoppy' ? ' pela Zoppy' : '')]
+        : m.status === 'pulada' ? h('span', { class: 'etiqueta ambar' }, 'pulada') : h('span', { class: 'etiqueta azul' }, 'agendada');
+      const acao = m.status === 'pulada' && vigente
+        ? h('button', { class: 'botao', onclick: () => tentar(async () => { await dados.marcarMensagem(m.id, 'pendente'); avisar('Voltou para a fila.'); await atualizarContador(); telaMensagens(); }) }, 'Voltar para a fila')
+        : m.status === 'enviada' && vigente
+          ? h('button', { class: 'link pequeno', onclick: () => abrirWhatsApp(m.cliente, texto(m)) }, 'reenviar')
+          : '';
+      return h('tr', {},
+        h('td', {}, M.formatarDia(m.devidaEm)),
+        h('td', {}, h('b', {}, nomeCompleto(m.cliente)), h('br'), h('span', { class: 'suave pequeno' }, M.formatarTelefone(m.cliente.telefone))),
+        h('td', {}, M.TIPOS_MENSAGEM[m.tipo] || m.tipo),
+        h('td', {}, `${valorGift(m.giftback)} até ${dia(m.giftback.expiraEm)}`, vigente ? '' : h('span', { class: 'suave pequeno' }, ` (${m.giftback.status})`)),
+        h('td', {}, situacao),
+        h('td', {}, acao));
+    }));
+    rodape.textContent = v.length > 300 ? `Mostrando 300 de ${v.length}.` : `${v.length} mensage${v.length === 1 ? 'm' : 'ns'}.`;
+  }
+  filtro.addEventListener('input', linhas);
+  soPuladas.addEventListener('change', linhas);
+  trocar(tela,
+    h('h1', { class: 'titulo-tela' }, 'Mensagens'),
+    abasMensagens(),
+    h('p', { class: 'suave', style: 'margin-bottom:12px' }, aba === 'proximas'
+      ? 'Mensagens já agendadas que ainda vão entrar na fila, no dia marcado. Se o cliente usar o giftback antes, a mensagem é cancelada sozinha.'
+      : 'Mensagens dos últimos 45 dias que já saíram da fila. Uma mensagem pulada por engano pode voltar para a fila aqui.'),
+    h('div', { class: 'cartao' },
+      h('div', { class: 'linha-flex', style: 'margin-bottom:10px' }, filtro,
+        aba === 'historico' ? h('label', { class: 'linha-flex pequeno' }, soPuladas, 'Só as puladas') : null),
+      h('div', { class: 'rolagem' }, h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, aba === 'proximas' ? 'Entra na fila em' : 'Era para'), h('th', {}, 'Cliente'), h('th', {}, 'Mensagem'), h('th', {}, 'Giftback'), h('th', {}, 'Situação'), h('th', {}, ''))),
+        corpo)),
+      rodape));
+  linhas();
+}
+
 async function telaMensagens() {
+  if ((estado.abaMensagens || 'fila') !== 'fila') return telaMensagensConferencia(estado.abaMensagens);
   const [fila, proximas, enviadas] = await Promise.all([dados.filaMensagens(), dados.proximasMensagens(7), dados.enviadasHoje()]);
   const etiquetas = { envio: 'verde', lembrete: 'azul', vencendo: 'ambar' };
   const atrasadas = fila.filter((m) => m.atrasada).length;
@@ -618,7 +693,8 @@ async function telaMensagens() {
 
   const permissao = 'Notification' in window ? Notification.permission : 'indisponivel';
   trocar(tela,
-    h('h1', { class: 'titulo-tela' }, 'Mensagens para enviar'),
+    h('h1', { class: 'titulo-tela' }, 'Mensagens'),
+    abasMensagens(),
     h('div', { class: 'numeros' },
       h('div', { class: 'numero' + (atrasadas ? ' alerta' : '') }, h('b', {}, atrasadas), h('span', {}, 'atrasadas')),
       h('div', { class: 'numero' }, h('b', {}, fila.length - atrasadas), h('span', {}, 'para hoje')),
@@ -874,6 +950,7 @@ function configPerfis() {
       const pctCampo = h('input', { type: 'number', min: 0, max: 100, step: 0.5, placeholder: `padrão (${config.percentual}%)`, value: p.percentual ?? '', oninput: (e) => { p.percentual = e.target.value === '' ? null : Number(e.target.value); } });
       const minimo = h('input', { type: 'text', inputMode: 'decimal', placeholder: `padrão (${M.formatarReais(config.compraMinimaCentavos)})`, value: p.compraMinimaCentavos == null ? '' : (p.compraMinimaCentavos / 100).toFixed(2).replace('.', ','),
         oninput: (e) => { p.compraMinimaCentavos = e.target.value.trim() === '' ? null : (M.lerReais(e.target.value) ?? null); } });
+      comVirgulaAutomatica(minimo);
       return h('div', { class: 'cartao' },
         h('div', { class: 'linha-flex', style: 'margin-bottom:10px' }, exemplo, h('span', { class: 'espaco' }),
           h('button', { class: 'link pequeno perigo-link', type: 'button', onclick: () => { if (confirm(`Remover o perfil "${p.nome}"? Os clientes com ele voltam a ser clientes comuns.`)) { perfis.splice(i, 1); desenhar(); } } }, 'remover')),
@@ -909,7 +986,7 @@ function configRegras() {
   const num = (valor, extra = {}) => h('input', { type: 'number', value: valor, min: 0, step: 'any', ...extra });
   const f = {
     percentual: num(config.percentual, { max: 100 }),
-    minimo: h('input', { type: 'text', inputMode: 'decimal', value: (config.compraMinimaCentavos / 100).toFixed(2).replace('.', ',') }),
+    minimo: comVirgulaAutomatica(h('input', { type: 'text', value: (config.compraMinimaCentavos / 100).toFixed(2).replace('.', ',') })),
     validade: num(config.validadeDias, { step: 1, min: 1 }),
     multiplo: num(config.multiploUsoMinimo, { min: 1 }),
     lembrete: num(config.diasLembrete, { step: 1 }),
@@ -1056,7 +1133,16 @@ function cartaoDadosOnline() {
     avisar('Todos os dados foram apagados.');
     await atualizarContador();
   });
-  return h('div', { class: 'cartao', style: 'margin-top:22px' },
+  return h('div', { class: 'cartao' },
+    h('h3', {}, 'Cópia de segurança'),
+    h('p', { class: 'suave', style: 'margin:6px 0 12px' }, 'Baixa um arquivo com todos os clientes, compras, giftbacks, mensagens e campanhas. Guarde no Google Drive de vez em quando (sugestão: toda semana). Serve para recuperar tudo se algum dia der problema no banco.'),
+    h('button', { class: 'botao', onclick: () => tentar(async () => {
+      const copia = await dados.exportarTudo();
+      const a = h('a', { href: URL.createObjectURL(new Blob([JSON.stringify(copia)], { type: 'application/json' })), download: `giftback-acker-copia-${hoje()}.json` });
+      document.body.append(a); a.click(); a.remove();
+      avisar('Cópia de segurança baixada.');
+    }) }, 'Baixar cópia de segurança'),
+    h('hr', { style: 'border:0;border-top:1px solid var(--linha);margin:18px 0' }),
     h('h3', {}, 'Dados da Zoppy'),
     h('p', { class: 'suave', style: 'margin:6px 0 12px' }, 'Para trazer os clientes, compras e giftbacks da Zoppy: escolha o arquivo ', h('b', {}, 'seed.json'), ' da pasta GIFTBACK ACKER > dados_migrados e clique em Importar. Só funciona com o banco vazio.'),
     h('div', { class: 'linha-flex' }, arquivo, h('button', { class: 'botao principal', onclick: importar }, 'Importar')),

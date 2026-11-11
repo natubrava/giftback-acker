@@ -169,6 +169,18 @@ export function lerReais(texto) {
   return Math.round(n * 100 + 1e-7);
 }
 
+/**
+ * Vírgula automática (como em maquininha e app de banco): só os números contam e os dois últimos
+ * são os centavos. '2' -> '0,02', '200' -> '2,00', '20000' -> '200,00'. Vazio continua vazio.
+ */
+export function mascararReais(texto) {
+  const digitos = String(texto ?? '').replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  if (!digitos) return '';
+  const centavos = Number(digitos.slice(0, 11));
+  const inteiro = String(Math.floor(centavos / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${inteiro},${String(centavos % 100).padStart(2, '0')}`;
+}
+
 function porcentagem(centavos, pct) {
   return Math.round((centavos * pct) / 100 + 1e-9);
 }

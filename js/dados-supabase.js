@@ -3,7 +3,7 @@
 // e gb_cancelar_compra) e garante as regras críticas (1 giftback ativo, só a equipe acessa).
 import {
   CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente,
-} from './motor.js?v=20261111001326';
+} from './motor.js?v=20261111085531';
 
 const PAGINA = 1000;
 
@@ -366,6 +366,26 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
         giftbacksUsados: compras.filter((c) => c.giftback_usado_id).length,
         ultimas: compras.slice(0, 5).map((c) => ({ ...compra(c), cliente: c.cliente })),
       };
+    },
+
+    /** Mensagens de giftback dos últimos dias e as futuras (enviadas, puladas e na fila), para conferência. */
+    async historicoMensagens(diasAtras = 45) {
+      const desde = new Date(relogio().getTime() - diasAtras * 86400000).toISOString().slice(0, 10);
+      const linhas = await todos(() => supabase.from('gb_mensagens')
+        .select('*, giftback:gb_giftbacks(*), cliente:gb_clientes(*)')
+        .in('status', ['pendente', 'enviada', 'pulada']).not('giftback_id', 'is', null).gte('devida_em', desde).order('id'));
+      return linhas
+        .filter((m) => m.cliente && !m.cliente.excluido_em && m.giftback)
+        .map((m) => ({ ...mensagem(m), enviadaPor: m.enviada_por || null, giftback: giftback(m.giftback), cliente: cliente(m.cliente) }))
+        .sort((a, b) => b.devidaEm.localeCompare(a.devidaEm));
+    },
+
+    /** Cópia de segurança: todas as tabelas do Giftback Acker num arquivo só. */
+    async exportarTudo() {
+      const tabelas = { gb_clientes: 'id', gb_compras: 'id', gb_giftbacks: 'id', gb_mensagens: 'id', gb_campanhas: 'id', gb_config: 'chave', gb_uniplus_ignoradas: 'operacao_id' };
+      const copia = { geradoEm: new Date().toISOString(), origem: 'supabase giftback-acker' };
+      for (const [tabela, chave] of Object.entries(tabelas)) copia[tabela] = await todos(() => supabase.from(tabela).select('*').order(chave));
+      return copia;
     },
 
     /** Quantas mensagens já foram enviadas hoje (para o painel). */

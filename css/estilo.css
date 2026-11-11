@@ -375,3 +375,22 @@ body { background: linear-gradient(180deg, #f7f5ee 0%, #f1eee4 100%) fixed; }
   .rfm-nome { font-size: .66rem; }
   .rfm-celula { display: none; }
 }
+
+/* Lista de clientes: compra mínima embaixo do giftback */
+.resultado-gift { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
+.gift-min { font-size: .74rem; font-weight: 600; color: #9a6200; white-space: nowrap; }
+
+/* Matriz RFM: uma área por categoria (as posições da mesma cor ficam coladas) */
+.rfm-matriz { gap: 0; grid-template-rows: repeat(5, 84px); }
+.rfm-bloco, .rfm-bloco.realce, .rfm-bloco.apagado { transition: opacity .15s; }
+.rfm-bloco { padding: 0; overflow: visible; }
+.rfm-bloco.com-rotulo { z-index: 1; }
+.rfm-rotulo { position: absolute; top: 8px; right: 10px; display: flex; flex-direction: column; align-items: flex-end; text-align: right; line-height: 1.2; pointer-events: none; }
+.rfm-bloco.larga .rfm-rotulo { white-space: nowrap; }
+.rfm-bloco:not(.larga) .rfm-rotulo { left: 6px; }
+.rfm-bloco.realce { filter: brightness(1.1); }
+@media (max-width: 420px) {
+  .rfm-rotulo { top: 5px; right: 6px; }
+  .rfm-bloco:not(.larga) .rfm-rotulo { left: 3px; }
+  .gift-min { font-size: .7rem; }
+}

@@ -1,11 +1,13 @@
 // telas-extra.js — Telas "Relatórios" (matriz RFM) e "Campanhas".
 // Recebe do app.js as ferramentas de tela (h, trocar, avisar...) para não duplicar código.
-import * as M from './motor.js?v=20261111001326';
-import { SEGMENTOS_RFM, classificarRFM, resumoGrupo, filtrarPublico, descreverPublico, segmentoRFM, limitesRFM, explicarSegmento } from './rfm.js?v=20261111001326';
+import * as M from './motor.js?v=20261111085531';
+import { SEGMENTOS_RFM, classificarRFM, resumoGrupo, filtrarPublico, descreverPublico, segmentoRFM, limitesRFM, explicarSegmento } from './rfm.js?v=20261111085531';
 
 // Em qual quadradinho da grade 5x5 aparece o nome de cada categoria (coluna = recência R, linha = frequência/valor FM).
-const ROTULO = { nao_pode_perder: '1,5', fiel: '3,5', campeao: '5,5', em_risco: '1,4', atencao: '3,3', possivel_fiel: '4,3',
-  hibernando: '1,2', quase_hibernando: '3,2', promissor: '4,1', novo: '5,1' };
+const ROTULO = { nao_pode_perder: '2,5', fiel: '4,5', campeao: '5,5', em_risco: '2,4', atencao: '3,3', possivel_fiel: '5,3',
+  hibernando: '2,2', quase_hibernando: '3,2', promissor: '4,1', novo: '5,1' };
+// Categorias com 2 ou mais colunas de largura: o nome pode ficar numa linha só.
+const LARGAS = new Set(['nao_pode_perder', 'fiel', 'em_risco', 'possivel_fiel', 'hibernando']);
 
 export function criarTelasExtras(ctx) {
   const { h, trocar, tentar, avisar, tela, estado, nomeCompleto, dia, hoje, abrirWhatsApp, valorGift } = ctx;
@@ -65,7 +67,9 @@ export function criarTelasExtras(ctx) {
 
     const detalhe = h('div', { class: 'cartao rfm-detalhe' });
     const lista = h('div', { class: 'cartao', style: 'margin-top:14px' });
-    const blocos = {}; // id -> [quadradinhos]
+    // A grade tem 25 posições (5 notas de recência x 5 de frequência/valor). As posições da mesma
+    // categoria são desenhadas coladas, sem linha entre elas, formando uma área só por categoria.
+    const blocos = {}; // id -> [pedaços da área]
     const celulas = [];
     for (let fm = 5; fm >= 1; fm--) {
       for (let r = 1; r <= 5; r++) {
@@ -73,15 +77,17 @@ export function criarTelasExtras(ctx) {
         const s = SEGMENTOS_RFM[id];
         const n = (porSeg[id] || []).length;
         const rotulo = ROTULO[id] === `${r},${fm}`;
+        const divisaDireita = r < 5 && segmentoRFM(r + 1, fm) !== id;
+        const divisaBaixo = fm > 1 && segmentoRFM(r, fm - 1) !== id;
         const el = h('button', {
-          class: 'rfm-bloco' + (rotulo ? ' com-rotulo' : ''), type: 'button', style: `background:${s.cor}`,
-          'aria-label': `${s.nome}: ${n} clientes`,
+          class: 'rfm-bloco' + (rotulo ? ' com-rotulo' : '') + (LARGAS.has(id) ? ' larga' : ''), type: 'button',
+          style: `background:${s.cor};box-shadow:0 0 0 1px ${s.cor};border-right:${divisaDireita ? 3 : 0}px solid #fff;border-bottom:${divisaBaixo ? 3 : 0}px solid #fff`,
+          'aria-label': `${s.nome}: ${n} clientes`, tabIndex: rotulo ? 0 : -1,
           onclick: () => selecionar(id),
           onmouseenter: (e) => { realcar(id); mostrarDica(id, e); }, onmousemove: mover,
           onmouseleave: () => { realcar(null); dica.hidden = true; },
         },
-        rotulo ? [h('span', { class: 'rfm-nome' }, s.nome), h('span', { class: 'rfm-num' }, n), h('span', { class: 'rfm-pct' }, pct(n, todos.length) + ' da base')] : null,
-        h('span', { class: 'rfm-celula' }, porCelula[`${r},${fm}`] || ''));
+        rotulo ? h('span', { class: 'rfm-rotulo' }, h('span', { class: 'rfm-nome' }, s.nome), h('span', { class: 'rfm-num' }, n), h('span', { class: 'rfm-pct' }, pct(n, todos.length) + ' da base')) : null);
         (blocos[id] ??= []).push(el);
         celulas.push(el);
       }
@@ -176,7 +182,7 @@ export function criarTelasExtras(ctx) {
           h('div', { class: 'rfm-eixo-x' }, 'comprou há mais tempo ← → comprou há pouco')),
         detalhe),
       h('p', { class: 'suave pequeno', style: 'margin-top:8px' },
-        'Como é calculado (mesmo método da Zoppy, conferido cliente a cliente): cada cliente ganha nota de 1 a 5 em recência (colunas: da esquerda, comprou há mais tempo, para a direita, comprou há pouco) e em frequência e valor gasto (linhas: de baixo para cima). As notas são relativas à sua base: os 20% melhores ganham 5, os 20% seguintes 4, e assim por diante. Cada quadradinho mostra quantos clientes têm aquela combinação de notas. Atualiza sozinho a cada compra.'),
+        'Como é calculado (mesmo método da Zoppy, conferido cliente a cliente): cada cliente ganha nota de 1 a 5 em recência (colunas: da esquerda, comprou há mais tempo, para a direita, comprou há pouco) e em frequência e valor gasto (linhas: de baixo para cima). As notas são relativas à sua base: os 20% melhores ganham 5, os 20% seguintes 4, e assim por diante. Cada cor é uma categoria: uma área maior significa que a categoria cobre mais combinações de notas, não que tem mais clientes. Atualiza sozinho a cada compra.'),
       lista);
     desenhar();
   }
