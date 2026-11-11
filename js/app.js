@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261111132957';
-import { criarDadosLocal } from './dados-local.js?v=20261111132957';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261111132957';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111132957';
-import { criarTelasExtras } from './telas-extra.js?v=20261111132957';
+import * as M from './motor.js?v=20261111160442';
+import { criarDadosLocal } from './dados-local.js?v=20261111160442';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261111160442';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111160442';
+import { criarTelasExtras } from './telas-extra.js?v=20261111160442';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -132,7 +132,18 @@ function campoPercentual(aoMudar, base = config) {
     aviso.textContent = mudou ? `só nesta venda (padrão ${base.percentual}%)` : '';
   };
   campo.addEventListener('input', () => { marcar(); aoMudar(); });
-  const el = h('label', { class: 'linha-pct' }, 'Giftback desta venda:', campo, '%', aviso);
+  // Normal: só o texto "Giftback desta venda: 5%", discreto. Clicou: aparecem as setas para mudar o %.
+  const mudar = (d) => { campo.value = Math.min(100, Math.max(0.5, valor() + d)); marcar(); aoMudar(); };
+  const editor = h('span', { class: 'pct-editor', hidden: true },
+    'Giftback desta venda:',
+    h('button', { type: 'button', class: 'pct-seta', 'aria-label': 'Diminuir o %', onclick: () => mudar(-1) }, '−'),
+    campo,
+    h('button', { type: 'button', class: 'pct-seta', 'aria-label': 'Aumentar o %', onclick: () => mudar(1) }, '+'),
+    '%', aviso);
+  const resumo = h('button', { type: 'button', class: 'pct-resumo', title: 'Clique para mudar o % só desta venda' },
+    'Giftback desta venda: ', h('b', {}, `${base.percentual}%`), h('span', { class: 'pct-lapis', 'aria-hidden': 'true' }, '✎'));
+  resumo.onclick = () => { resumo.hidden = true; editor.hidden = false; campo.focus(); campo.select(); };
+  const el = h('div', { class: 'linha-pct' }, resumo, editor);
   return { el, valor, configDaVenda: () => ({ ...base, percentual: valor() }), mudou: () => valor() !== base.percentual };
 }
 
@@ -349,28 +360,40 @@ async function painelCliente(painel, aoFechar) {
     ? `Última compra ${dia(c.ultimaCompra)} (${diasDesde === 0 ? 'hoje' : diasDesde === 1 ? 'ontem' : `há ${diasDesde} dias`}) · ${c.compras} compra${c.compras > 1 ? 's' : ''} · ${M.formatarReais(c.totalCentavos)}`
     : 'Primeira compra';
   const historico = h('div', { class: 'cartao historico', id: 'historico' });
+  // Última compra, nº de compras e total: recolhido; o "i" ao lado do telefone abre e fecha
+  const linhaUltima = h('div', { class: 'cliente-ultima', hidden: true }, ultima);
+  const botaoInfo = h('button', { type: 'button', class: 'info-btn', title: 'Última compra e total do cliente', 'aria-expanded': 'false' }, 'i');
+  botaoInfo.onclick = () => {
+    linhaUltima.hidden = !linhaUltima.hidden;
+    botaoInfo.classList.toggle('aberto', !linhaUltima.hidden);
+    botaoInfo.setAttribute('aria-expanded', String(!linhaUltima.hidden));
+  };
   const cabecalho = h('div', {},
     h('div', { class: 'cliente-topo' },
       h('div', { class: 'cliente-id' },
         h('h2', { class: 'cliente-nome' }, nomeCompleto(c), ' ', etiquetaPerfil(c)),
-        h('div', { class: 'cliente-dados' }, M.formatarTelefone(c.telefone))),
+        h('div', { class: 'cliente-dados' }, M.formatarTelefone(c.telefone), c.ultimaCompra || c.compras ? botaoInfo : null)),
       h('div', { class: 'cliente-acoes' },
         h('button', { class: 'botao mini', onclick: () => historico.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 'Histórico'),
         h('button', { class: 'botao mini', onclick: () => editarCliente(painel, c, redesenhar) }, 'Editar'),
         h('button', { class: 'botao mini', onclick: aoFechar, title: 'Fechar (Esc)', 'aria-label': 'Fechar' }, '✕'))),
-    h('div', { class: 'cliente-ultima' }, ultima));
+    linhaUltima);
 
   // Giftback: valor à esquerda; validade e compra mínima (em destaque) à direita. O código fica só no Histórico.
   let cartaoGift;
   if (g) {
     const faltam = M.diasEntre(hoje(), M.diaSP(g.expiraEm));
-    cartaoGift = h('div', { class: 'gift' + (faltam <= 3 ? ' alerta' : ''), title: `Código ${g.codigo}` },
+    // "faltam X dias" fica recolhido (o "i" mostra); perto de vencer (3 dias ou menos) aparece sempre, em vermelho
+    const urgente = faltam <= 3;
+    const prazo = h('span', { class: urgente ? 'urgente' : 'prazo-extra', hidden: !urgente }, ' · ', textoPrazo(g));
+    const botaoPrazo = urgente ? null : h('button', { type: 'button', class: 'info-btn', title: 'Quantos dias faltam', onclick: () => { prazo.hidden = !prazo.hidden; botaoPrazo.classList.toggle('aberto', !prazo.hidden); } }, 'i');
+    cartaoGift = h('div', { class: 'gift' + (urgente ? ' alerta' : ''), title: `Código ${g.codigo}` },
       h('div', { class: 'gift-linha' },
         h('div', {},
           h('div', { class: 'gift-rotulo' }, g.tipo === 'resgate' ? 'Cupom de resgate ativo' : 'Tem giftback'),
           h('div', { class: 'gift-valor' }, valorGift(g))),
         h('div', { class: 'gift-lado' },
-          h('div', {}, 'Vale até ', h('b', {}, dia(g.expiraEm)), ' · ', h('span', { class: faltam <= 3 ? 'urgente' : '' }, textoPrazo(g))),
+          h('div', {}, 'Vale até ', h('b', {}, dia(g.expiraEm)), prazo, botaoPrazo),
           g.minimoCentavos ? h('div', { class: 'gift-minimo' }, 'Compra mínima ', h('b', {}, M.formatarReais(g.minimoCentavos))) : null)));
   } else {
     const ultimoGift = linhasGiftbacks(c)[0];
@@ -493,7 +516,7 @@ function desenharHistorico(caixa, c, redesenhar) {
 function desenharFormulario(area, cliente, g, redesenhar) {
   const fValor = h('input', { type: 'text', inputMode: 'numeric', placeholder: '0,00', title: 'Valor dos produtos que NÃO estão em promoção', autocomplete: 'off', 'aria-label': 'Valor da compra (itens não promocionais)' });
   const previa = h('div', { class: 'previa' });
-  const confirmar = h('button', { class: 'botao principal grande', disabled: true }, 'Confirmar compra');
+  const confirmar = h('button', { class: 'botao principal grande registrar', disabled: true }, 'Registrar compra');
   let usar = null; // null = ainda não decidiu (segue o padrão: usar sempre que puder)
   const regrasCliente = M.configParaCliente(config, cliente);
   const pct = campoPercentual(() => atualizar(), regrasCliente);
@@ -509,7 +532,7 @@ function desenharFormulario(area, cliente, g, redesenhar) {
 
     if (g && uso.ok) {
       const marca = h('input', { type: 'checkbox', checked: vaiUsar, onchange: (e) => { usar = e.target.checked; atualizar(); } });
-      previa.append(h('label', { class: 'usar' }, marca, `Usar o ${g.tipo === 'resgate' ? 'cupom' : 'giftback'} de ${valorGift(g)} nesta compra`));
+      previa.append(h('label', { class: 'usar' }, marca, g.tipo === 'resgate' ? `Usar o cupom de ${valorGift(g)} nesta compra` : h('span', {}, 'Usar Giftback de ', h('b', {}, valorGift(g)), ' nesta compra')));
     } else if (g && uso.motivo === 'abaixo_minimo') {
       previa.append(h('div', { class: 'caixa-info ambar' }, `Ainda não dá para usar o giftback: faltam ${M.formatarReais(uso.faltamCentavos)} para a compra mínima de ${M.formatarReais(g.minimoCentavos)}.`));
     }
@@ -546,10 +569,11 @@ function desenharFormulario(area, cliente, g, redesenhar) {
   fValor.id = 'valor-compra';
   trocar(area,
     h('div', { class: 'caixa-valor' },
-      h('label', { class: 'caixa-valor-rotulo', for: 'valor-compra' }, 'Valor da compra', h('span', { class: 'obs' }, ' só os produtos que NÃO estão em promoção')),
-      h('div', { class: 'valor-linha' }, h('span', { class: 'prefixo' }, 'R$'), fValor, confirmar),
+      h('label', { class: 'caixa-valor-rotulo', for: 'valor-compra' }, 'Valor da compra', h('span', { class: 'obs' }, ' – produtos NÃO promocionais')),
+      h('div', { class: 'valor-linha' }, h('span', { class: 'prefixo' }, 'R$'), fValor),
       pct.el),
-    previa);
+    previa,
+    confirmar);
   fValor.focus();
 }
 
