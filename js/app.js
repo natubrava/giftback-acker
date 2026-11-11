@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261111160442';
-import { criarDadosLocal } from './dados-local.js?v=20261111160442';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261111160442';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111160442';
-import { criarTelasExtras } from './telas-extra.js?v=20261111160442';
+import * as M from './motor.js?v=20261111162131';
+import { criarDadosLocal } from './dados-local.js?v=20261111162131';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261111162131';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111162131';
+import { criarTelasExtras } from './telas-extra.js?v=20261111162131';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -33,6 +33,19 @@ function h(tag, attrs = {}, ...filhos) {
     if (f == null || f === false) continue;
     el.append(f.nodeType ? f : document.createTextNode(String(f)));
   }
+  return el;
+}
+
+const ICONES = {
+  presente: '<path d="M3 8h18v4H3z"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5"/>',
+  calendario: '<rect x="3" y="4.5" width="18" height="17" rx="2"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/>',
+};
+/** Ícone desenhado em linha (presente, calendário). */
+function icone(nome, classe = '') {
+  const el = document.createElement('span');
+  el.className = 'icone ' + classe;
+  el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = `<svg viewBox="0 0 24 24">${ICONES[nome]}</svg>`;
   return el;
 }
 
@@ -193,7 +206,7 @@ function telaCaixa() {
     value: estado.busca, 'aria-label': 'Buscar cliente',
   });
   const resultados = h('div', { class: 'resultados' });
-  const painel = h('div', { id: 'painel', style: 'margin-top:16px' });
+  const painel = h('div', { id: 'painel' });
   let lista = [];
   let timer = null;
 
@@ -371,7 +384,7 @@ async function painelCliente(painel, aoFechar) {
   const cabecalho = h('div', {},
     h('div', { class: 'cliente-topo' },
       h('div', { class: 'cliente-id' },
-        h('h2', { class: 'cliente-nome' }, nomeCompleto(c), ' ', etiquetaPerfil(c)),
+        h('h2', { class: 'cliente-nome', title: nomeCompleto(c) }, nomeCompleto(c), ' ', etiquetaPerfil(c)),
         h('div', { class: 'cliente-dados' }, M.formatarTelefone(c.telefone), c.ultimaCompra || c.compras ? botaoInfo : null)),
       h('div', { class: 'cliente-acoes' },
         h('button', { class: 'botao mini', onclick: () => historico.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 'Histórico'),
@@ -389,11 +402,13 @@ async function painelCliente(painel, aoFechar) {
     const botaoPrazo = urgente ? null : h('button', { type: 'button', class: 'info-btn', title: 'Quantos dias faltam', onclick: () => { prazo.hidden = !prazo.hidden; botaoPrazo.classList.toggle('aberto', !prazo.hidden); } }, 'i');
     cartaoGift = h('div', { class: 'gift' + (urgente ? ' alerta' : ''), title: `Código ${g.codigo}` },
       h('div', { class: 'gift-linha' },
-        h('div', {},
+        icone('presente', 'gift-icone'),
+        h('div', { class: 'gift-esq' },
           h('div', { class: 'gift-rotulo' }, g.tipo === 'resgate' ? 'Cupom de resgate ativo' : 'Tem giftback'),
           h('div', { class: 'gift-valor' }, valorGift(g))),
+        h('div', { class: 'gift-divisa' }),
         h('div', { class: 'gift-lado' },
-          h('div', {}, 'Vale até ', h('b', {}, dia(g.expiraEm)), prazo, botaoPrazo),
+          h('div', { class: 'gift-vale' }, icone('calendario'), 'Vale até ', h('b', {}, dia(g.expiraEm)), prazo, botaoPrazo),
           g.minimoCentavos ? h('div', { class: 'gift-minimo' }, 'Compra mínima ', h('b', {}, M.formatarReais(g.minimoCentavos))) : null)));
   } else {
     const ultimoGift = linhasGiftbacks(c)[0];
@@ -534,24 +549,23 @@ function desenharFormulario(area, cliente, g, redesenhar) {
       const marca = h('input', { type: 'checkbox', checked: vaiUsar, onchange: (e) => { usar = e.target.checked; atualizar(); } });
       previa.append(h('label', { class: 'usar' }, marca, g.tipo === 'resgate' ? `Usar o cupom de ${valorGift(g)} nesta compra` : h('span', {}, 'Usar Giftback de ', h('b', {}, valorGift(g)), ' nesta compra')));
     } else if (g && uso.motivo === 'abaixo_minimo') {
-      previa.append(h('div', { class: 'caixa-info ambar' }, `Ainda não dá para usar o giftback: faltam ${M.formatarReais(uso.faltamCentavos)} para a compra mínima de ${M.formatarReais(g.minimoCentavos)}.`));
+      previa.append(h('div', { class: 'caixa-info ambar curta' }, icone('presente'), h('span', {}, 'Giftback: faltam ', h('b', {}, M.formatarReais(uso.faltamCentavos)), ' para a compra mínima de ', M.formatarReais(g.minimoCentavos))));
     }
 
     previa.append(h('div', { class: 'resumo-venda' },
-      h('div', { class: 'conta' },
-        h('span', {}, 'Valor da compra'), h('span', { class: 'direita' }, M.formatarReais(valor)),
-        vaiUsar ? [h('span', {}, 'Desconto no PDV (giftback)'), h('span', { class: 'direita desconto' }, '− ' + M.formatarReais(r.descontoCentavos))] : null),
+      vaiUsar ? h('div', { class: 'conta' },
+        h('span', {}, 'Desconto no PDV (giftback)'), h('span', { class: 'direita desconto' }, '− ' + M.formatarReais(r.descontoCentavos))) : null,
       h('div', { class: 'paga' }, h('span', {}, 'Cliente paga'), h('b', {}, M.formatarReais(r.valorFinalCentavos)))));
     if (r.novoGiftback) {
-      previa.append(h('div', { class: 'caixa-info verde' }, 'Vai ganhar ', h('b', {}, M.formatarReais(r.novoGiftback.valorCentavos)),
-        ` de giftback (${pct.valor()}%), válido até ${dia(r.novoGiftback.expiraEm)}.`));
+      previa.append(h('div', { class: 'caixa-info verde curta' }, icone('presente'), h('span', {}, 'Vai ganhar ', h('b', {}, M.formatarReais(r.novoGiftback.valorCentavos)),
+        ` (${pct.valor()}%), válido até ${dia(r.novoGiftback.expiraEm)}`)));
     } else if (r.novoDescartado) {
-      previa.append(h('div', { class: 'caixa-info verde' }, `O cliente continua com o giftback atual de ${valorGift(g)}, que é maior que o desta compra (${M.formatarReais(r.novoDescartado.valorCentavos)}). Giftback não acumula: fica sempre o maior.`));
+      previa.append(h('div', { class: 'caixa-info verde curta', title: 'Giftback não acumula: fica sempre o de maior valor.' }, icone('presente'), h('span', {}, 'Continua com o giftback de ', h('b', {}, valorGift(g)), ` (maior que o desta, ${M.formatarReais(r.novoDescartado.valorCentavos)})`)));
     } else {
-      previa.append(h('div', { class: 'caixa-info cinza' }, `Valor final abaixo de ${M.formatarReais(regrasCliente.compraMinimaCentavos)}: esta compra não gera giftback.`));
+      previa.append(h('div', { class: 'caixa-info cinza curta' }, icone('presente'), h('span', {}, `Não gera giftback (abaixo de ${M.formatarReais(regrasCliente.compraMinimaCentavos)})`)));
     }
     if (r.giftbackAnterior === 'substituido') {
-      previa.append(h('div', { class: 'caixa-info ambar' }, `O giftback atual de ${valorGift(g)} não será usado e será trocado pelo novo de ${M.formatarReais(r.novoGiftback.valorCentavos)} (giftback não acumula: fica o maior).`));
+      previa.append(h('div', { class: 'caixa-info ambar curta', title: 'Giftback não acumula: fica sempre o de maior valor.' }, icone('presente'), h('span', {}, `O giftback de ${valorGift(g)} não será usado: troca pelo novo de `, h('b', {}, M.formatarReais(r.novoGiftback.valorCentavos)))));
     }
     confirmar.disabled = false;
     confirmar.onclick = () => tentar(async () => {

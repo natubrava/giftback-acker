@@ -7,7 +7,7 @@
 //   FM = média de F e M arredondada para baixo.
 //   A categoria sai da posição (R, FM) na grade 5x5 padrão de RFM.
 // As faixas fixas abaixo ficam só como referência/explicação.
-import { diaSP, diasEntre } from './motor.js?v=20261111160442';
+import { diaSP, diasEntre } from './motor.js?v=20261111162131';
 
 export const FAIXAS_RECENCIA = Object.freeze([30, 60, 90, 180]); // dias
 export const FAIXAS_FREQUENCIA = Object.freeze([2, 3, 5, 10]); // compras
