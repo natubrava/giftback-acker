@@ -532,3 +532,13 @@ body { background: linear-gradient(180deg, #f7f5ee 0%, #f1eee4 100%) fixed; }
   .gift-minimo { font-size: .8rem; padding: 3px 7px; }
   .gift-minimo b { font-size: .95rem; }
 }
+
+/* Histórico do cliente recolhido (abre na setinha) */
+.historico-titulo { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; font-weight: 700; font-size: 1.1rem; color: var(--texto); text-align: left; }
+.historico-seta { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--verde-claro); color: var(--verde-escuro); font-size: .95rem; transition: transform .15s; flex: none; }
+.historico.aberto .historico-seta { transform: rotate(90deg); }
+.historico-dica { margin-left: auto; font-size: .78rem; font-weight: 600; color: var(--texto-suave); }
+.historico.aberto .historico-titulo { margin-bottom: 10px; }
+.historico-conteudo[hidden] { display: none; }
+.historico:not(.aberto) { padding-top: 10px; padding-bottom: 10px; }
+.historico-seta { font-size: 1.25rem; line-height: 1; }

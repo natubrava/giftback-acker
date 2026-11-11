@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261111162131';
-import { criarDadosLocal } from './dados-local.js?v=20261111162131';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261111162131';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111162131';
-import { criarTelasExtras } from './telas-extra.js?v=20261111162131';
+import * as M from './motor.js?v=20261111163849';
+import { criarDadosLocal } from './dados-local.js?v=20261111163849';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261111163849';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111163849';
+import { criarTelasExtras } from './telas-extra.js?v=20261111163849';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -244,7 +244,7 @@ function telaCaixa() {
   const fechar = () => { campo.value = ''; estado.busca = ''; estado.clienteId = null; trocar(painel); desenharResumoDoDia(painel); campo.focus(); };
 
   function abrirCliente(id) {
-    estado.clienteId = id; estado.resultadoCompra = null;
+    estado.clienteId = id; estado.resultadoCompra = null; estado.historicoAberto = false;
     trocar(resultados);
     painelCliente(painel, fechar);
   }
@@ -387,7 +387,7 @@ async function painelCliente(painel, aoFechar) {
         h('h2', { class: 'cliente-nome', title: nomeCompleto(c) }, nomeCompleto(c), ' ', etiquetaPerfil(c)),
         h('div', { class: 'cliente-dados' }, M.formatarTelefone(c.telefone), c.ultimaCompra || c.compras ? botaoInfo : null)),
       h('div', { class: 'cliente-acoes' },
-        h('button', { class: 'botao mini', onclick: () => historico.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 'Histórico'),
+        h('button', { class: 'botao mini', onclick: () => { historico.abrirHistorico?.(true); historico.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, 'Histórico'),
         h('button', { class: 'botao mini', onclick: () => editarCliente(painel, c, redesenhar) }, 'Editar'),
         h('button', { class: 'botao mini', onclick: aoFechar, title: 'Fechar (Esc)', 'aria-label': 'Fechar' }, '✕'))),
     linhaUltima);
@@ -523,8 +523,23 @@ function desenharHistorico(caixa, c, redesenhar) {
     }
   }
   const barra = h('div', { class: 'subabas' });
-  trocar(caixa, h('h3', { style: 'margin-bottom:8px' }, 'Histórico do cliente'), barra, corpo,
-    h('p', { class: 'suave pequeno', style: 'margin-top:8px' }, 'Da época da Zoppy vieram o giftback ativo e os giftbacks que foram usados (pelas compras com desconto). Os que venceram sem uso naquela época não vieram. Daqui para frente fica tudo registrado: ganho, uso, vencimento e troca, com a data. Mensagens enviadas pela Zoppy aparecem como "enviada (pela Zoppy)", sem a data exata.'));
+  // Recolhido por padrão: o título com a setinha abre e fecha (o botão "Histórico" lá em cima também abre)
+  const conteudo = h('div', { class: 'historico-conteudo' }, barra, corpo);
+  const seta = h('span', { class: 'historico-seta', 'aria-hidden': 'true' }, '▸');
+  const titulo = h('button', { type: 'button', class: 'historico-titulo', 'aria-expanded': 'false' },
+    seta, h('span', {}, 'Histórico do cliente'), h('span', { class: 'historico-dica' }, 'clique para ver'));
+  const abrir = (sim) => {
+    estado.historicoAberto = sim;
+    conteudo.hidden = !sim;
+    caixa.classList.toggle('aberto', sim);
+    titulo.setAttribute('aria-expanded', String(sim));
+    titulo.lastChild.textContent = sim ? 'clique para fechar' : 'clique para ver';
+  };
+  titulo.onclick = () => abrir(!estado.historicoAberto);
+  caixa.abrirHistorico = abrir;
+  conteudo.append(h('p', { class: 'suave pequeno', style: 'margin-top:8px' }, 'Da época da Zoppy vieram o giftback ativo e os giftbacks que foram usados (pelas compras com desconto). Os que venceram sem uso naquela época não vieram. Daqui para frente fica tudo registrado: ganho, uso, vencimento e troca, com a data. Mensagens enviadas pela Zoppy aparecem como "enviada (pela Zoppy)", sem a data exata.'));
+  trocar(caixa, titulo, conteudo);
+  abrir(!!estado.historicoAberto);
   mostrar();
 }
 
