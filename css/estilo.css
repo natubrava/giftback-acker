@@ -394,3 +394,77 @@ body { background: linear-gradient(180deg, #f7f5ee 0%, #f1eee4 100%) fixed; }
   .rfm-bloco:not(.larga) .rfm-rotulo { left: 3px; }
   .gift-min { font-size: .7rem; }
 }
+
+/* ═══════════ Tela do cliente (2026-11-11): tudo visível sem rolar na janela em cima do PDV ═══════════ */
+.botao.mini { padding: 5px 10px; font-size: .84rem; border-radius: 8px; }
+.cliente-topo { flex-wrap: nowrap; align-items: flex-start; }
+.cliente-acoes { gap: 5px; }
+.txt-azul { color: var(--azul); }
+.txt-vermelho { color: var(--vermelho); }
+
+.gift-linha { align-items: center; }
+.gift-lado { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.gift-minimo { background: #ffd978; color: #4a3000; border: 1px solid #d9a521; border-radius: 9px; padding: 4px 11px; font-size: 1rem; font-weight: 600; white-space: nowrap; box-shadow: 0 1px 0 rgba(255, 255, 255, .6) inset; }
+.gift-minimo b { font-size: 1.15rem; font-weight: 800; }
+
+/* Campo do valor da compra: caixa própria, com o nome do campo em cima */
+.caixa-valor { border: 2px solid var(--verde); border-radius: 12px; background: #fbfdfb; padding: 8px 12px 10px; box-shadow: 0 2px 8px rgba(47, 107, 60, .10); }
+.caixa-valor-rotulo { display: block; font-size: .8rem; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--verde-escuro); margin-bottom: 5px; cursor: pointer; }
+.caixa-valor-rotulo .obs { font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--texto-suave); }
+.caixa-valor .valor-linha input { border-color: var(--verde); background: #fff; }
+.caixa-valor .linha-pct { margin-top: 8px; font-size: .9rem; }
+.caixa-valor .linha-pct .pct { padding: 3px 8px; }
+
+/* Conta da venda: "Cliente paga" em azul, para a caixa não confundir os valores */
+.resumo-venda { max-width: 440px; margin: 8px 0; }
+.resumo-venda .conta { max-width: none; margin: 0 0 6px; padding: 0 4px; }
+.paga { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: linear-gradient(180deg, #2a70a6 0%, #1f5c8a 100%); color: #fff; border-radius: 10px; padding: 7px 14px; font-weight: 700; font-size: 1.05rem; box-shadow: 0 2px 0 #174669, 0 4px 10px rgba(31, 92, 138, .25); }
+.paga b { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.previa .usar { margin-bottom: 4px; }
+
+/* Aviso grande: WhatsApp que já tem cadastro */
+.alerta-repetido { margin: 0 0 14px; border: 3px solid var(--vermelho); background: var(--vermelho-claro); color: #5e1a0f; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; font-weight: 600; }
+.alerta-titulo { font-size: 1.25rem; font-weight: 800; color: var(--vermelho); text-transform: uppercase; letter-spacing: .3px; }
+.alerta-nome { font-size: 1.5rem; font-weight: 800; color: var(--texto); line-height: 1.15; }
+
+/* Histórico das regras */
+.hist-regras td, .hist-regras th { padding: 6px 8px; font-size: .86rem; }
+.hist-regras tr.atual td { background: #f3f8f1; font-weight: 600; }
+
+@media (max-width: 720px) {
+  .cliente-topo { flex-wrap: nowrap; }
+  .cliente-nome { font-size: 1.15rem; }
+  .cliente-dados { font-size: .86rem; margin-top: 0; }
+  .cliente-ultima { margin-top: 1px; font-size: .82rem; }
+  .gift { margin-top: 7px; padding: 7px 12px; }
+  .gift-linha { flex-wrap: nowrap; }
+  .gift-rotulo { font-size: .7rem; }
+  .gift-valor { font-size: 1.75rem; }
+  .gift-lado { text-align: right; align-items: flex-end; gap: 4px; font-size: .86rem; }
+  .gift-minimo { font-size: .9rem; padding: 3px 9px; }
+  .gift-minimo b { font-size: 1.05rem; }
+  .lancar { margin-top: 8px; }
+  .caixa-valor { padding: 6px 10px 8px; }
+  .caixa-valor .valor-linha { flex-wrap: nowrap; gap: 8px; }
+  .caixa-valor .valor-linha input { flex: 1; width: auto; min-width: 0; font-size: 1.4rem; padding: 5px 10px; }
+  .caixa-valor .valor-linha .botao.grande { width: auto; padding: 8px 12px; font-size: .98rem; white-space: nowrap; }
+  .caixa-valor .linha-pct { margin-top: 6px; }
+  .previa { margin-top: 7px; }
+  .resumo-venda { max-width: none; margin: 5px 0; }
+  .resumo-venda .conta { font-size: .95rem; margin-bottom: 4px; }
+  .paga { padding: 5px 12px; }
+  .paga b { font-size: 1.5rem; }
+  .previa .caixa-info { padding: 6px 12px; font-size: .9rem; }
+  .previa .usar { font-size: .95rem; }
+  .alerta-nome { font-size: 1.3rem; }
+  .alerta-titulo { font-size: 1.1rem; }
+}
+@media (max-width: 420px) {
+  .caixa-valor-rotulo .obs { display: block; }
+  .gift-valor { font-size: 1.5rem; }
+  .gift-lado { font-size: .8rem; }
+  .botao.mini { padding: 5px 8px; font-size: .8rem; }
+}
+.gift-valor, .gift-rotulo { white-space: nowrap; }
+.gift-linha > div:first-child { flex: none; }
+.gift-lado { min-width: 0; }

@@ -462,3 +462,45 @@ export function linkWhatsApp(telefone, texto, modo = 'web') {
   const t = encodeURIComponent(texto);
   return modo === 'app' ? `https://wa.me/55${tel}?text=${t}` : `https://web.whatsapp.com/send?phone=55${tel}&text=${t}`;
 }
+
+// ───────────── Histórico das regras do giftback ─────────────
+// Guarda cada mudança das regras (quando, quem e como ficou), começando pelo padrão que era usado na Zoppy.
+// Fica dentro das configurações (historicoRegras), então vai junto na cópia de segurança.
+
+export const CAMPOS_REGRAS = Object.freeze(['percentual', 'compraMinimaCentavos', 'validadeDias', 'multiploUsoMinimo', 'diasLembrete', 'diasAntesAvisoFinal']);
+
+/** Como era na Zoppy até a troca (levantado no painel da Zoppy em 2026-11-09, ver docs/02). */
+export const REGRAS_ZOPPY = Object.freeze({ percentual: 7, compraMinimaCentavos: 5000, validadeDias: 45, multiploUsoMinimo: 5, diasLembrete: 31, diasAntesAvisoFinal: 3 });
+
+/** Só os campos de regra de uma configuração. */
+export function regrasDe(config = {}) {
+  return Object.fromEntries(CAMPOS_REGRAS.filter((k) => config[k] != null).map((k) => [k, Number(config[k])]));
+}
+
+const mesmasRegras = (a, b) => CAMPOS_REGRAS.every((k) => Number(a?.[k]) === Number(b?.[k]));
+
+/** Histórico guardado ou, se ainda não houver, as duas linhas de partida (Zoppy e início do Giftback Acker). */
+export function historicoRegras(config = {}) {
+  if (Array.isArray(config.historicoRegras) && config.historicoRegras.length) return config.historicoRegras.map((x) => ({ ...x }));
+  return [
+    { em: null, titulo: 'Padrão da Zoppy (até 10/11/2026)', por: null, regras: { ...REGRAS_ZOPPY } },
+    { em: '2026-11-10', titulo: 'Início do Giftback Acker', por: null, regras: regrasDe(CONFIG_PADRAO) },
+  ];
+}
+
+/**
+ * Devolve o histórico com a mudança acrescentada, ou null se as regras não mudaram.
+ * Se as regras atuais já eram diferentes da última linha (mudança feita antes de o histórico existir),
+ * registra isso também, sem inventar data.
+ */
+export function registrarMudancaRegras(configAnterior, novas, { em, por = null } = {}) {
+  const antes = { ...regrasDe(CONFIG_PADRAO), ...regrasDe(configAnterior) };
+  const depois = { ...antes, ...regrasDe(novas) };
+  if (mesmasRegras(antes, depois)) return null;
+  const hist = historicoRegras(configAnterior);
+  if (!mesmasRegras(hist[hist.length - 1].regras, antes)) {
+    hist.push({ em: null, titulo: 'Alteração anterior ao histórico (sem data registrada)', por: null, regras: antes });
+  }
+  hist.push({ em, por, regras: depois });
+  return hist;
+}

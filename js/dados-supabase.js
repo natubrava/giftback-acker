@@ -2,8 +2,8 @@
 // O cálculo continua em motor.js; o banco grava tudo de uma vez (funções gb_registrar_compra
 // e gb_cancelar_compra) e garante as regras críticas (1 giftback ativo, só a equipe acessa).
 import {
-  CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente,
-} from './motor.js?v=20261111085531';
+  CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
+} from './motor.js?v=20261111132957';
 
 const PAGINA = 1000;
 
@@ -385,7 +385,26 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       const tabelas = { gb_clientes: 'id', gb_compras: 'id', gb_giftbacks: 'id', gb_mensagens: 'id', gb_campanhas: 'id', gb_config: 'chave', gb_uniplus_ignoradas: 'operacao_id' };
       const copia = { geradoEm: new Date().toISOString(), origem: 'supabase giftback-acker' };
       for (const [tabela, chave] of Object.entries(tabelas)) copia[tabela] = await todos(() => supabase.from(tabela).select('*').order(chave));
+      copia.historicoRegras = historicoRegras(configAtual()); // inclui o padrão da Zoppy, mesmo que as regras nunca tenham sido alteradas
       return copia;
+    },
+
+    /** Cópia automática do dia (feita no banco, 1 por dia, guardada 14 dias). Devolve true se criou agora. */
+    async copiaDiaria() {
+      return ok(await supabase.rpc('gb_copia_diaria')) === true;
+    },
+
+    /** Lista das cópias automáticas guardadas (sem o conteúdo, que é grande). */
+    async listarCopias() {
+      return ok(await supabase.from('gb_copias').select('dia, criada_em, criada_por, resumo').order('dia', { ascending: false }))
+        .map((r) => ({ dia: r.dia, criadaEm: r.criada_em, criadaPor: r.criada_por, resumo: r.resumo || {} }));
+    },
+
+    /** Conteúdo de uma cópia automática, para baixar. */
+    async baixarCopia(dia) {
+      const r = ok(await supabase.from('gb_copias').select('dados').eq('dia', dia).maybeSingle());
+      if (!r) throw new Error('Cópia não encontrada.');
+      return { ...r.dados, historicoRegras: historicoRegras(configAtual()) };
     },
 
     /** Quantas mensagens já foram enviadas hoje (para o painel). */

@@ -6,8 +6,8 @@
 // Toda regra de negócio vem de motor.js; aqui só se lê e grava.
 import {
   CONFIG_PADRAO, calcularCompra, giftbackVigente, gerarCodigo, planejarMensagens,
-  clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente,
-} from './motor.js?v=20261111085531';
+  clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
+} from './motor.js?v=20261111132957';
 
 const CHAVE = 'giftback-acker-teste-v1';
 
@@ -428,7 +428,7 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
 
     /** Cópia de segurança: tudo num arquivo só. */
     async exportarTudo() {
-      return { geradoEm: agoraISO(), origem: 'modo teste', ...estado };
+      return { geradoEm: agoraISO(), origem: 'modo teste', ...estado, historicoRegras: historicoRegras(configAtual()) };
     },
 
     /** Quantas mensagens já foram enviadas hoje (para o painel). */

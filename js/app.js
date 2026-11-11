@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261111085531';
-import { criarDadosLocal } from './dados-local.js?v=20261111085531';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261111085531';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111085531';
-import { criarTelasExtras } from './telas-extra.js?v=20261111085531';
+import * as M from './motor.js?v=20261111132957';
+import { criarDadosLocal } from './dados-local.js?v=20261111132957';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261111132957';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111132957';
+import { criarTelasExtras } from './telas-extra.js?v=20261111132957';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -15,6 +15,7 @@ let dados = null;
 const tela = document.getElementById('tela');
 let config = M.CONFIG_PADRAO;
 const estado = { clienteId: null, busca: '', resultadoCompra: null };
+let usuarioEmail = ''; // quem está usando (para o histórico das regras)
 
 // ───────────────────────── utilidades de tela ─────────────────────────
 
@@ -279,17 +280,41 @@ function painelNovoCliente(painel, prefill, aoSalvar, aoCancelar) {
   const fEmail = h('input', { type: 'email', placeholder: 'opcional', autocomplete: 'off' });
   const jaExiste = h('div', {});
   const fPerfilNovo = seletorPerfil('');
+  const botaoCadastrar = h('button', { class: 'botao principal', type: 'submit' }, 'Cadastrar e lançar compra');
+  let repetido = null;      // cliente que já usa este WhatsApp (não deixa cadastrar de novo)
+  let conferido = '';       // último telefone conferido
 
-  fTel.addEventListener('blur', async () => {
+  // Confere o WhatsApp assim que o número fica completo: um telefone = um cadastro só.
+  async function conferirTelefone() {
+    const tel = M.normalizarTelefone(fTel.value) || '';
+    if (tel === conferido) return repetido;
+    conferido = tel;
+    repetido = tel ? await dados.clientePorTelefone(tel) : null;
+    if (conferido !== tel) return repetido; // digitou mais enquanto conferia
     trocar(jaExiste);
-    const c = await dados.clientePorTelefone(fTel.value);
-    if (c?.excluidoEm) jaExiste.append(h('div', { class: 'caixa-info ambar', style: 'margin-top:10px' }, 'Este telefone é de ', h('b', {}, nomeCompleto(c)), `, cliente excluído em ${dia(c.excluidoEm)}. `,
-      h('button', { class: 'link', type: 'button', onclick: () => tentar(async () => { await dados.restaurarCliente(c.id); avisar('Cliente restaurado.'); aoSalvar(c); }) }, 'Restaurar este cliente')));
-    else if (c) jaExiste.append(h('div', { class: 'caixa-info ambar', style: 'margin-top:10px' }, 'Este telefone já é de ', h('b', {}, nomeCompleto(c)), '. ',
-      h('button', { class: 'link', onclick: () => aoSalvar(c) }, 'Abrir cadastro')));
-  });
+    botaoCadastrar.disabled = !!repetido;
+    if (!repetido) return null;
+    const c = repetido;
+    jaExiste.append(c.excluidoEm
+      ? h('div', { class: 'alerta-repetido', role: 'alert' },
+        h('div', { class: 'alerta-titulo' }, 'Este WhatsApp é de um cliente excluído'),
+        h('div', { class: 'alerta-nome' }, nomeCompleto(c)),
+        h('div', {}, `Excluído em ${dia(c.excluidoEm)}. Não dá para cadastrar de novo com o mesmo número: restaure o cadastro, que volta com todo o histórico.`),
+        h('button', { class: 'botao principal grande', type: 'button', onclick: () => tentar(async () => { await dados.restaurarCliente(c.id); avisar('Cliente restaurado.'); aoSalvar(c); }) }, 'Restaurar este cliente'))
+      : h('div', { class: 'alerta-repetido', role: 'alert' },
+        h('div', { class: 'alerta-titulo' }, 'Este WhatsApp já tem cadastro'),
+        h('div', { class: 'alerta-nome' }, nomeCompleto(c)),
+        h('div', {}, 'Não é possível cadastrar o mesmo número duas vezes. Abra o cadastro que já existe para lançar a compra.'),
+        h('button', { class: 'botao principal grande', type: 'button', onclick: () => aoSalvar(c) }, `Abrir o cadastro de ${c.nome || 'cliente'}`)));
+    jaExiste.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return repetido;
+  }
+  fTel.addEventListener('input', () => { conferirTelefone().catch(() => {}); });
+  fTel.addEventListener('blur', () => { conferirTelefone().catch(() => {}); });
 
   const salvar = () => tentar(async () => {
+    conferido = ''; // confere de novo na hora de salvar
+    if (await conferirTelefone()) throw new Error('Este WhatsApp já tem cadastro. Abra o cadastro que já existe.');
     const c = await dados.criarCliente({ nome: fNome.value, sobrenome: fSobrenome.value, telefone: fTel.value, sexo: fSexo.value || null, email: fEmail.value.trim() || null, perfil: fPerfilNovo.value || null });
     avisar('Cliente cadastrado no Club NatuBrava.');
     aoSalvar(c);
@@ -297,6 +322,7 @@ function painelNovoCliente(painel, prefill, aoSalvar, aoCancelar) {
 
   trocar(painel, h('form', { class: 'cartao', onsubmit: (e) => { e.preventDefault(); salvar(); } },
     h('h2', { class: 'titulo-tela' }, 'Cliente novo'),
+    jaExiste,
     h('div', { class: 'grade' },
       h('label', { class: 'campo' }, h('span', {}, 'WhatsApp (obrigatório)'), fTel),
       h('label', { class: 'campo' }, h('span', {}, 'Nome'), fNome),
@@ -304,11 +330,11 @@ function painelNovoCliente(painel, prefill, aoSalvar, aoCancelar) {
       h('label', { class: 'campo' }, h('span', {}, 'Sexo'), fSexo),
       h('label', { class: 'campo' }, h('span', {}, 'E-mail'), fEmail),
       h('label', { class: 'campo' }, h('span', {}, 'Perfil'), fPerfilNovo)),
-    jaExiste,
     h('div', { class: 'linha-flex', style: 'margin-top:14px' },
-      h('button', { class: 'botao principal', type: 'submit' }, 'Cadastrar e lançar compra'),
+      botaoCadastrar,
       h('button', { class: 'botao', type: 'button', onclick: aoCancelar }, 'Cancelar'))));
   (prefill.telefone ? fNome : fTel).focus();
+  if (prefill.telefone) conferirTelefone().catch(() => {});
 }
 
 async function painelCliente(painel, aoFechar) {
@@ -323,35 +349,34 @@ async function painelCliente(painel, aoFechar) {
     ? `Última compra ${dia(c.ultimaCompra)} (${diasDesde === 0 ? 'hoje' : diasDesde === 1 ? 'ontem' : `há ${diasDesde} dias`}) · ${c.compras} compra${c.compras > 1 ? 's' : ''} · ${M.formatarReais(c.totalCentavos)}`
     : 'Primeira compra';
   const historico = h('div', { class: 'cartao historico', id: 'historico' });
-  const cabecalho = h('div', { class: 'cliente-topo' },
-    h('div', { class: 'cliente-id' },
-      h('h2', { class: 'cliente-nome' }, nomeCompleto(c), ' ', etiquetaPerfil(c)),
-      h('div', { class: 'cliente-dados' }, M.formatarTelefone(c.telefone)),
-      h('div', { class: 'cliente-ultima' }, ultima)),
-    h('div', { class: 'cliente-acoes' },
-      h('button', { class: 'botao', onclick: () => historico.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 'Histórico'),
-      h('button', { class: 'botao', onclick: () => editarCliente(painel, c, redesenhar) }, 'Editar'),
-      h('button', { class: 'botao', onclick: aoFechar, title: 'Fechar (Esc)' }, '✕')));
+  const cabecalho = h('div', {},
+    h('div', { class: 'cliente-topo' },
+      h('div', { class: 'cliente-id' },
+        h('h2', { class: 'cliente-nome' }, nomeCompleto(c), ' ', etiquetaPerfil(c)),
+        h('div', { class: 'cliente-dados' }, M.formatarTelefone(c.telefone))),
+      h('div', { class: 'cliente-acoes' },
+        h('button', { class: 'botao mini', onclick: () => historico.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 'Histórico'),
+        h('button', { class: 'botao mini', onclick: () => editarCliente(painel, c, redesenhar) }, 'Editar'),
+        h('button', { class: 'botao mini', onclick: aoFechar, title: 'Fechar (Esc)', 'aria-label': 'Fechar' }, '✕'))),
+    h('div', { class: 'cliente-ultima' }, ultima));
 
-  // Giftback
+  // Giftback: valor à esquerda; validade e compra mínima (em destaque) à direita. O código fica só no Histórico.
   let cartaoGift;
   if (g) {
     const faltam = M.diasEntre(hoje(), M.diaSP(g.expiraEm));
-    cartaoGift = h('div', { class: 'gift' + (faltam <= 3 ? ' alerta' : '') },
+    cartaoGift = h('div', { class: 'gift' + (faltam <= 3 ? ' alerta' : ''), title: `Código ${g.codigo}` },
       h('div', { class: 'gift-linha' },
         h('div', {},
           h('div', { class: 'gift-rotulo' }, g.tipo === 'resgate' ? 'Cupom de resgate ativo' : 'Tem giftback'),
           h('div', { class: 'gift-valor' }, valorGift(g))),
         h('div', { class: 'gift-lado' },
-          h('div', {}, 'Vale até ', h('b', {}, dia(g.expiraEm))),
-          h('div', { class: faltam <= 3 ? 'urgente' : '' }, textoPrazo(g)),
-          g.minimoCentavos ? h('div', {}, 'Compra mín. ', h('b', {}, M.formatarReais(g.minimoCentavos))) : null)),
-      h('div', { class: 'gift-codigo' }, 'Código ', h('span', { class: 'codigo' }, g.codigo)));
+          h('div', {}, 'Vale até ', h('b', {}, dia(g.expiraEm)), ' · ', h('span', { class: faltam <= 3 ? 'urgente' : '' }, textoPrazo(g))),
+          g.minimoCentavos ? h('div', { class: 'gift-minimo' }, 'Compra mínima ', h('b', {}, M.formatarReais(g.minimoCentavos))) : null)));
   } else {
-    const ultimoGift = c.historicoGiftbacks[0];
+    const ultimoGift = linhasGiftbacks(c)[0];
     const motivo = !ultimoGift ? 'Ainda não ganhou giftback.'
-      : ultimoGift.status === 'usado' ? `Último giftback (${valorGift(ultimoGift)}) foi usado em ${dia(ultimoGift.usadoEm)}.`
-        : ultimoGift.status === 'expirado' ? `Último giftback (${valorGift(ultimoGift)}) venceu em ${dia(ultimoGift.expiraEm)}.`
+      : ultimoGift.status === 'usado' ? h('span', {}, `Último giftback (${valorGift(ultimoGift)}) foi `, h('b', { class: 'txt-azul' }, `usado em ${dia(ultimoGift.usadoEm)}`), '.')
+        : ultimoGift.status === 'expirado' ? h('span', {}, `Último giftback (${valorGift(ultimoGift)}) `, h('b', { class: 'txt-vermelho' }, `venceu em ${dia(ultimoGift.expiraEm)}`), ' sem ser usado.')
           : '';
     cartaoGift = h('div', { class: 'gift sem' }, h('b', {}, 'Sem giftback no momento.'), motivo ? h('div', { class: 'pequeno' }, motivo) : null);
   }
@@ -372,11 +397,45 @@ async function painelCliente(painel, aoFechar) {
 }
 
 const STATUS_GIFT = { ativo: ['verde', 'ativo'], usado: ['azul', 'usado'], expirado: ['vermelha', 'venceu'], substituido: ['cinza', 'trocado por um maior'], cancelado: ['cinza', 'cancelado'] };
+
+/**
+ * Linhas da aba Giftbacks do histórico, da mais nova para a mais antiga.
+ * Junta os giftbacks registrados aqui com os que foram usados na época da Zoppy
+ * (a Zoppy só entregou os cupons ativos; os usados aparecem nas compras, pelo desconto e pelo código).
+ */
+function linhasGiftbacks(c) {
+  const agora = new Date();
+  const registrados = (c.historicoGiftbacks || []).map((g) => ({ ...g, status: g.status === 'ativo' && new Date(g.expiraEm) < agora ? 'expirado' : g.status }));
+  const ids = new Set(registrados.map((g) => g.id));
+  const antigos = (c.historicoCompras || [])
+    .filter((p) => p.status === 'ok' && p.descontoCentavos > 0 && !(p.giftbackUsadoId && ids.has(p.giftbackUsadoId)))
+    .map((p) => ({ id: `compra-${p.id}`, antigo: true, criadoEm: null, expiraEm: null, valorCentavos: p.descontoCentavos, status: 'usado', usadoEm: p.data, compraUsoId: p.id, codigo: p.codigoUsado || '' }));
+  const quando = (g) => String(g.criadoEm || g.usadoEm || '');
+  return [...registrados, ...antigos].sort((a, b) => quando(b).localeCompare(quando(a)));
+}
+
+/** Situação do giftback em palavras, sempre com a data: "usado em", "venceu em", "trocado em". */
+function situacaoGiftback(g, c) {
+  const compraDe = (id) => (c.historicoCompras || []).find((p) => p.id === id);
+  if (g.status === 'ativo') return [h('span', { class: 'etiqueta verde' }, 'ativo'), ` vence em ${dia(g.expiraEm)}`];
+  if (g.status === 'usado') {
+    const p = compraDe(g.compraUsoId);
+    return [h('span', { class: 'etiqueta azul' }, `usado em ${dia(g.usadoEm || p?.data)}`), p ? ` na compra de ${M.formatarReais(p.valorCentavos)}` : ''];
+  }
+  if (g.status === 'expirado') return [h('span', { class: 'etiqueta vermelha' }, `venceu em ${dia(g.expiraEm)}`), ' sem ser usado'];
+  if (g.status === 'substituido') {
+    const p = (c.historicoCompras || []).find((x) => x.giftbackSubstituidoId === g.id);
+    return [h('span', { class: 'etiqueta cinza' }, p ? `trocado em ${dia(p.data)}` : 'trocado'), ' por um giftback maior'];
+  }
+  if (g.status === 'cancelado') return [h('span', { class: 'etiqueta cinza' }, 'cancelado'), ' (compra desfeita)'];
+  return [h('span', { class: 'etiqueta cinza' }, g.status)];
+}
 const STATUS_MSG = { enviada: ['verde', 'enviada'], pendente: ['ambar', 'na fila'], pulada: ['cinza', 'pulada'], cancelada: ['cinza', 'não precisou'] };
 
 /** Histórico do cliente em 3 abas: compras, giftbacks e mensagens (para tirar dúvida do cliente no balcão). */
 function desenharHistorico(caixa, c, redesenhar) {
-  const abas = [['compras', `Compras (${c.historicoCompras.length})`], ['giftbacks', `Giftbacks (${c.historicoGiftbacks.length})`], ['mensagens', `Mensagens (${(c.historicoMensagens || []).length})`]];
+  const listaGifts = linhasGiftbacks(c);
+  const abas = [['compras', `Compras (${c.historicoCompras.length})`], ['giftbacks', `Giftbacks (${listaGifts.length})`], ['mensagens', `Mensagens (${(c.historicoMensagens || []).length})`]];
   let atual = estado.abaHistorico || 'compras';
   const corpo = h('div', { class: 'rolagem' });
   const ultimaOk = c.historicoCompras.find((p) => p.status === 'ok');
@@ -401,17 +460,14 @@ function desenharHistorico(caixa, c, redesenhar) {
                 ? h('button', { class: 'link', onclick: () => desfazerCompra(p, redesenhar) }, 'desfazer') : '')));
         }))) : h('p', { class: 'suave' }, 'Nenhuma compra registrada.'));
     } else if (atual === 'giftbacks') {
-      trocar(corpo, c.historicoGiftbacks.length ? h('table', {},
-        h('thead', {}, h('tr', {}, h('th', {}, 'Ganhou em'), h('th', { class: 'num' }, 'Valor'), h('th', {}, 'Validade'), h('th', {}, 'Situação'), h('th', {}, 'Código'))),
-        h('tbody', {}, c.historicoGiftbacks.map((g) => {
-          const [cor, texto] = STATUS_GIFT[g.status] || ['cinza', g.status];
-          return h('tr', {},
-            h('td', {}, dia(g.criadoEm)),
-            h('td', { class: 'num' }, valorGift(g)),
-            h('td', {}, dia(g.expiraEm)),
-            h('td', {}, h('span', { class: 'etiqueta ' + cor }, texto), g.status === 'usado' && g.usadoEm ? ` em ${dia(g.usadoEm)}` : ''),
-            h('td', {}, h('span', { class: 'codigo' }, g.codigo)));
-        }))) : h('p', { class: 'suave' }, 'Nenhum giftback ainda.'));
+      trocar(corpo, listaGifts.length ? h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, 'Ganhou em'), h('th', { class: 'num' }, 'Valor'), h('th', {}, 'Validade'), h('th', {}, 'O que aconteceu'), h('th', {}, 'Código'))),
+        h('tbody', {}, listaGifts.map((g) => h('tr', {},
+          h('td', {}, g.criadoEm ? dia(g.criadoEm) : h('span', { class: 'suave', title: 'Ganho na época da Zoppy' }, 'na Zoppy')),
+          h('td', { class: 'num' }, valorGift(g)),
+          h('td', {}, g.expiraEm ? dia(g.expiraEm) : '—'),
+          h('td', {}, situacaoGiftback(g, c)),
+          h('td', {}, g.codigo ? h('span', { class: 'codigo pequeno' }, g.codigo) : ''))))) : h('p', { class: 'suave' }, 'Nenhum giftback ainda.'));
     } else {
       const msgs = c.historicoMensagens || [];
       trocar(corpo, msgs.length ? h('table', {},
@@ -430,7 +486,7 @@ function desenharHistorico(caixa, c, redesenhar) {
   }
   const barra = h('div', { class: 'subabas' });
   trocar(caixa, h('h3', { style: 'margin-bottom:8px' }, 'Histórico do cliente'), barra, corpo,
-    h('p', { class: 'suave pequeno', style: 'margin-top:8px' }, 'Mensagens enviadas pela Zoppy antes da troca aparecem como "enviada (pela Zoppy)", sem a data exata.'));
+    h('p', { class: 'suave pequeno', style: 'margin-top:8px' }, 'Da época da Zoppy vieram o giftback ativo e os giftbacks que foram usados (pelas compras com desconto). Os que venceram sem uso naquela época não vieram. Daqui para frente fica tudo registrado: ganho, uso, vencimento e troca, com a data. Mensagens enviadas pela Zoppy aparecem como "enviada (pela Zoppy)", sem a data exata.'));
   mostrar();
 }
 
@@ -458,10 +514,11 @@ function desenharFormulario(area, cliente, g, redesenhar) {
       previa.append(h('div', { class: 'caixa-info ambar' }, `Ainda não dá para usar o giftback: faltam ${M.formatarReais(uso.faltamCentavos)} para a compra mínima de ${M.formatarReais(g.minimoCentavos)}.`));
     }
 
-    previa.append(h('div', { class: 'conta' + (vaiUsar ? ' com-desconto' : '') },
-      h('span', {}, 'Compra'), h('span', { class: 'direita' }, M.formatarReais(valor)),
-      vaiUsar ? [h('span', {}, 'Desconto no PDV'), h('span', { class: 'direita desconto' }, '− ' + M.formatarReais(r.descontoCentavos))] : null,
-      h('span', { class: 'total' }, 'Cliente paga'), h('span', { class: 'total direita' }, M.formatarReais(r.valorFinalCentavos))));
+    previa.append(h('div', { class: 'resumo-venda' },
+      h('div', { class: 'conta' },
+        h('span', {}, 'Valor da compra'), h('span', { class: 'direita' }, M.formatarReais(valor)),
+        vaiUsar ? [h('span', {}, 'Desconto no PDV (giftback)'), h('span', { class: 'direita desconto' }, '− ' + M.formatarReais(r.descontoCentavos))] : null),
+      h('div', { class: 'paga' }, h('span', {}, 'Cliente paga'), h('b', {}, M.formatarReais(r.valorFinalCentavos)))));
     if (r.novoGiftback) {
       previa.append(h('div', { class: 'caixa-info verde' }, 'Vai ganhar ', h('b', {}, M.formatarReais(r.novoGiftback.valorCentavos)),
         ` de giftback (${pct.valor()}%), válido até ${dia(r.novoGiftback.expiraEm)}.`));
@@ -486,11 +543,12 @@ function desenharFormulario(area, cliente, g, redesenhar) {
   fValor.addEventListener('input', atualizar);
   fValor.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !confirmar.disabled) { e.preventDefault(); confirmar.focus(); } });
 
+  fValor.id = 'valor-compra';
   trocar(area,
-    h('h3', {}, 'Lançar compra'),
-    h('p', { class: 'suave pequeno', style: 'margin-bottom:8px' }, 'Digite só o valor dos produtos que NÃO estão em promoção.'),
-    h('div', { class: 'valor-linha' }, h('span', { class: 'prefixo' }, 'R$'), fValor, confirmar),
-    pct.el,
+    h('div', { class: 'caixa-valor' },
+      h('label', { class: 'caixa-valor-rotulo', for: 'valor-compra' }, 'Valor da compra', h('span', { class: 'obs' }, ' só os produtos que NÃO estão em promoção')),
+      h('div', { class: 'valor-linha' }, h('span', { class: 'prefixo' }, 'R$'), fValor, confirmar),
+      pct.el),
     previa);
   fValor.focus();
 }
@@ -500,8 +558,9 @@ function desenharSucesso(area, r, cliente, aoFechar, redesenhar) {
   let n = 1;
   if (r.giftbackUsado) {
     passos.push(h('div', { class: 'passo' }, h('span', { class: 'num' }, n++), h('div', {},
-      'No PDV, dê o desconto de ', h('span', { class: 'destaque-valor' }, M.formatarReais(r.compra.descontoCentavos)),
-      h('div', { class: 'suave pequeno' }, `Cliente paga ${M.formatarReais(r.compra.valorFinalCentavos)}. Giftback ${r.giftbackUsado.codigo} baixado.`))));
+      'No PDV, dê o desconto do giftback: ', h('span', { class: 'destaque-valor' }, M.formatarReais(r.compra.descontoCentavos)),
+      h('div', { class: 'paga', style: 'margin-top:6px' }, h('span', {}, 'Cliente paga'), h('b', {}, M.formatarReais(r.compra.valorFinalCentavos))),
+      h('div', { class: 'suave pequeno', style: 'margin-top:4px' }, 'O giftback usado já foi baixado.'))));
   }
   if (r.novoGiftback) {
     const texto = M.mensagemCompleta('envio', { cliente, giftback: r.novoGiftback, config });
@@ -1007,14 +1066,44 @@ function configRegras() {
     if (!(pct > 0 && pct <= 100)) throw new Error('Percentual deve ficar entre 0 e 100.');
     if (minimo == null) throw new Error('Valor mínimo inválido.');
     if (!(Number(f.validade.value) >= 1)) throw new Error('Validade deve ser de pelo menos 1 dia.');
-    config = await dados.salvarConfig({
+    const novas = {
       percentual: pct, compraMinimaCentavos: minimo, validadeDias: Math.round(Number(f.validade.value)),
       multiploUsoMinimo: Number(f.multiplo.value) || 1, diasLembrete: Math.round(Number(f.lembrete.value) || 0),
       diasAntesAvisoFinal: Math.round(Number(f.avisoFinal.value) || 0), nomeLoja: f.loja.value.trim() || M.CONFIG_PADRAO.nomeLoja,
-    });
-    avisar('Regras salvas. Valem para as próximas compras.');
+    };
+    // Toda mudança das regras entra no histórico (quando, quem e como ficou)
+    const hist = M.registrarMudancaRegras(config, novas, { em: new Date().toISOString(), por: usuarioEmail || (dados.modo === 'teste' ? 'modo teste' : null) });
+    config = await dados.salvarConfig(hist ? { ...novas, historicoRegras: hist } : novas);
+    avisar(hist ? 'Regras salvas e mudança registrada no histórico. Valem para as próximas compras.' : 'Regras salvas (nada mudou nas regras).');
+    telaConfig();
   });
-  return h('form', { class: 'cartao', onsubmit: (e) => { e.preventDefault(); salvar(); } },
+
+  // Histórico das regras: da mais nova para a mais antiga; a de cima é a que vale hoje
+  const hist = M.historicoRegras(config);
+  const emVigor = M.regrasDe(config);
+  const ultimaIgual = M.CAMPOS_REGRAS.every((k) => Number(hist[hist.length - 1].regras[k]) === Number(emVigor[k]));
+  const linhasHist = (ultimaIgual ? hist : [...hist, { em: null, titulo: 'Em vigor hoje (alterada antes de o histórico existir)', por: null, regras: emVigor }]).slice().reverse();
+  const celula = (r, ant, k, texto) => h('td', { class: 'num' }, ant && Number(ant[k]) !== Number(r[k]) ? h('b', { class: 'txt-azul', title: 'Mudou nesta alteração' }, texto) : texto);
+  const tabelaHist = h('div', { class: 'cartao' },
+    h('h3', { style: 'margin-bottom:4px' }, 'Histórico das regras'),
+    h('p', { class: 'suave pequeno', style: 'margin-bottom:8px' }, 'Cada vez que as regras são salvas com alguma mudança, fica registrado aqui. Começa pelo padrão que era usado na Zoppy. Em azul, o que mudou. Este histórico vai junto na cópia de segurança.'),
+    h('div', { class: 'rolagem' }, h('table', { class: 'hist-regras' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Quando'), h('th', { class: 'num' }, 'Giftback'), h('th', { class: 'num' }, 'Mín. para ganhar'), h('th', { class: 'num' }, 'Validade'), h('th', { class: 'num' }, 'Para usar'), h('th', { class: 'num' }, 'Lembrete'), h('th', { class: 'num' }, 'Aviso final'), h('th', {}, 'Quem'))),
+      h('tbody', {}, linhasHist.map((x, i) => {
+        const r = x.regras, ant = linhasHist[i + 1]?.regras;
+        const quando = x.titulo || (x.em ? `${dia(x.em)} às ${new Date(x.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : '');
+        return h('tr', { class: i === 0 ? 'atual' : '' },
+          h('td', {}, quando, i === 0 ? h('span', { class: 'etiqueta verde', style: 'margin-left:6px' }, 'vale hoje') : null),
+          celula(r, ant, 'percentual', `${r.percentual}%`),
+          celula(r, ant, 'compraMinimaCentavos', M.formatarReais(r.compraMinimaCentavos)),
+          celula(r, ant, 'validadeDias', `${r.validadeDias} dias`),
+          celula(r, ant, 'multiploUsoMinimo', `${r.multiploUsoMinimo}× o giftback`),
+          celula(r, ant, 'diasLembrete', `dia ${r.diasLembrete}`),
+          celula(r, ant, 'diasAntesAvisoFinal', `${r.diasAntesAvisoFinal} dias antes`),
+          h('td', { class: 'suave pequeno' }, x.por || ''));
+      })))));
+
+  return h('div', {}, h('form', { class: 'cartao', onsubmit: (e) => { e.preventDefault(); salvar(); } },
     h('div', { class: 'grade' },
       h('label', { class: 'campo' }, h('span', {}, 'Giftback padrão (% da compra)'), f.percentual),
       h('label', { class: 'campo' }, h('span', {}, 'Compra mínima para ganhar (R$)'), f.minimo),
@@ -1025,7 +1114,8 @@ function configRegras() {
       h('label', { class: 'campo' }, h('span', {}, 'Nome da loja nas mensagens'), f.loja)),
     exemplo,
     h('p', { class: 'suave pequeno', style: 'margin-top:8px' }, 'O % pode ser mudado em cada venda, na tela do Caixa, sem alterar este padrão. Mudanças aqui valem para os giftbacks novos: os já gerados continuam como foram combinados com o cliente.'),
-    h('div', { class: 'linha-flex', style: 'margin-top:14px' }, h('button', { class: 'botao principal grande', type: 'submit' }, 'Salvar regras')));
+    h('div', { class: 'linha-flex', style: 'margin-top:14px' }, h('button', { class: 'botao principal grande', type: 'submit' }, 'Salvar regras'))),
+  tabelaHist);
 }
 
 function configModelos() {
@@ -1111,7 +1201,40 @@ function cartaoModoTeste() {
     h('button', { class: 'botao perigo', onclick: () => { if (confirm('Apagar tudo que foi feito no teste e voltar aos dados da Zoppy?')) tentar(async () => { await dados.restaurarDadosZoppy(); config = await dados.obterConfig(); estado.clienteId = null; estado.resultadoCompra = null; avisar('Dados restaurados.'); await atualizarContador(); telaConfig(); }); } }, 'Apagar testes e recarregar dados da Zoppy'));
 }
 
+function baixarArquivo(conteudo, nome) {
+  const a = h('a', { href: URL.createObjectURL(new Blob([JSON.stringify(conteudo)], { type: 'application/json' })), download: nome });
+  document.body.append(a); a.click(); a.remove();
+}
+
 function cartaoDadosOnline() {
+  // Há quantos dias a última cópia foi baixada neste computador
+  let baixadaEm = null;
+  try { baixadaEm = localStorage.getItem('gb_ultima_copia_baixada'); } catch { /* sem armazenamento local */ }
+  const diasSemBaixar = baixadaEm ? M.diasEntre(baixadaEm, hoje()) : null;
+  const ultimaBaixada = h('p', { class: 'pequeno ' + (diasSemBaixar == null || diasSemBaixar > 7 ? 'txt-vermelho' : 'suave'), style: 'margin-top:8px' },
+    diasSemBaixar == null ? 'Neste computador ainda não foi baixada nenhuma cópia.'
+      : diasSemBaixar === 0 ? 'Última cópia baixada neste computador: hoje.'
+        : `Última cópia baixada neste computador: ${M.formatarDia(baixadaEm)} (há ${diasSemBaixar} dia${diasSemBaixar > 1 ? 's' : ''}).${diasSemBaixar > 7 ? ' Já passou de uma semana: baixe uma nova e guarde no Google Drive.' : ''}`);
+
+  // Cópias automáticas guardadas no banco
+  const copias = h('div', {}, h('p', { class: 'suave pequeno' }, 'Carregando…'));
+  (async () => {
+    try {
+      await dados.copiaDiaria().catch(() => {});
+      const lista = await dados.listarCopias();
+      trocar(copias, lista.length ? h('div', { class: 'rolagem' }, h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, 'Dia'), h('th', { class: 'num' }, 'Clientes'), h('th', { class: 'num' }, 'Compras'), h('th', { class: 'num' }, 'Giftbacks'), h('th', { class: 'num' }, 'Mensagens'), h('th', {}, ''))),
+        h('tbody', {}, lista.map((c) => h('tr', {},
+          h('td', {}, M.formatarDia(c.dia)),
+          h('td', { class: 'num' }, c.resumo.clientes ?? ''), h('td', { class: 'num' }, c.resumo.compras ?? ''),
+          h('td', { class: 'num' }, c.resumo.giftbacks ?? ''), h('td', { class: 'num' }, c.resumo.mensagens ?? ''),
+          h('td', {}, h('button', { class: 'link', type: 'button', onclick: () => tentar(async () => { baixarArquivo(await dados.baixarCopia(c.dia), `giftback-acker-copia-${c.dia}.json`); avisar('Cópia baixada.'); }) }, 'baixar')))))))
+        : h('p', { class: 'suave pequeno' }, 'Nenhuma cópia automática ainda. A primeira é feita hoje.'));
+    } catch {
+      trocar(copias, h('p', { class: 'suave pequeno' }, 'As cópias automáticas ainda não foram ativadas no banco.'));
+    }
+  })();
+
   const arquivo = h('input', { type: 'file', accept: '.json,application/json' });
   const situacao = h('p', { class: 'suave pequeno', style: 'margin-top:8px' });
   const importar = () => tentar(async () => {
@@ -1135,13 +1258,17 @@ function cartaoDadosOnline() {
   });
   return h('div', { class: 'cartao' },
     h('h3', {}, 'Cópia de segurança'),
-    h('p', { class: 'suave', style: 'margin:6px 0 12px' }, 'Baixa um arquivo com todos os clientes, compras, giftbacks, mensagens e campanhas. Guarde no Google Drive de vez em quando (sugestão: toda semana). Serve para recuperar tudo se algum dia der problema no banco.'),
+    h('p', { class: 'suave', style: 'margin:6px 0 12px' }, 'O botão abaixo baixa um arquivo com todos os clientes, compras, giftbacks, mensagens, campanhas, configurações e o histórico das regras. Guarde no Google Drive de vez em quando (sugestão: toda semana). É a cópia que fica fora do banco, para recuperar tudo mesmo se o banco inteiro tiver problema.'),
     h('button', { class: 'botao', onclick: () => tentar(async () => {
-      const copia = await dados.exportarTudo();
-      const a = h('a', { href: URL.createObjectURL(new Blob([JSON.stringify(copia)], { type: 'application/json' })), download: `giftback-acker-copia-${hoje()}.json` });
-      document.body.append(a); a.click(); a.remove();
+      baixarArquivo(await dados.exportarTudo(), `giftback-acker-copia-${hoje()}.json`);
+      try { localStorage.setItem('gb_ultima_copia_baixada', hoje()); } catch { /* sem armazenamento local */ }
       avisar('Cópia de segurança baixada.');
-    }) }, 'Baixar cópia de segurança'),
+      telaConfig();
+    }) }, 'Baixar cópia de segurança agora'),
+    ultimaBaixada,
+    h('h3', { style: 'margin-top:18px' }, 'Cópias automáticas'),
+    h('p', { class: 'suave', style: 'margin:6px 0 10px' }, 'O sistema guarda sozinho uma cópia por dia (na primeira vez que alguém abre o Giftback Acker no dia) e mantém as dos últimos 14 dias. Servem para voltar atrás se algo for apagado ou alterado por engano.'),
+    copias,
     h('hr', { style: 'border:0;border-top:1px solid var(--linha);margin:18px 0' }),
     h('h3', {}, 'Dados da Zoppy'),
     h('p', { class: 'suave', style: 'margin:6px 0 12px' }, 'Para trazer os clientes, compras e giftbacks da Zoppy: escolha o arquivo ', h('b', {}, 'seed.json'), ' da pasta GIFTBACK ACKER > dados_migrados e clique em Importar. Só funciona com o banco vazio.'),
@@ -1208,6 +1335,7 @@ async function depoisDoLogin() {
     return;
   }
   const s = await dados.sessao();
+  usuarioEmail = s?.user?.email || '';
   const usuario = document.getElementById('usuario');
   trocar(usuario, h('span', { class: 'pequeno' }, s?.user?.email || ''), ' ',
     h('button', { class: 'link pequeno', style: 'color:#fff', onclick: () => tentar(async () => { await dados.sair(); location.reload(); }) }, 'Sair'));
@@ -1286,6 +1414,8 @@ async function abrirSistema() {
   window.addEventListener('hashchange', navegar);
   navegar();
   atualizarContador();
+  // Cópia de segurança automática do dia (o banco faz 1 por dia; se falhar, não atrapalha o uso)
+  dados.copiaDiaria?.().catch(() => {});
 }
 
 // Instalar como aplicativo (janela própria, sem barra de endereço): o Chrome avisa quando é possível.
