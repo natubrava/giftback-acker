@@ -3,7 +3,7 @@
 // e gb_cancelar_compra) e garante as regras críticas (1 giftback ativo, só a equipe acessa).
 import {
   CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
-} from './motor.js?v=20261111200453';
+} from './motor.js?v=20261111213826';
 
 const PAGINA = 1000;
 
@@ -233,6 +233,11 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       const config = percentual ? { ...doCliente, percentual: Number(percentual) } : doCliente; // % só desta venda
       const agora = data ? new Date(data) : relogio(); // venda do Uniplus: vale a data/hora da venda
       const atual = await giftbackAtivoAgora(clienteId); // sempre do banco, nunca da tela
+      // Venda antiga lançada depois de um giftback mais novo (ex.: venda de ontem puxada do PDV hoje):
+      // não pode usar nem trocar um giftback que ainda nem existia na hora da venda.
+      if (data && atual && new Date(atual.criadoEm) > agora) {
+        throw new Error('Esta venda é de antes do giftback atual do cliente (que foi gerado depois dela). Lance as vendas na ordem em que aconteceram, ou ignore esta venda.');
+      }
       const r = calcularCompra({ valorCentavos, giftbackAtivo: atual, usarGiftback, config, agora });
       const mensagens = r.novoGiftback
         ? planejarMensagens({ criadoEm: agora.toISOString(), expiraEm: r.novoGiftback.expiraEm }, config).map((m) => ({ tipo: m.tipo, devida_em: m.devidaEm }))
@@ -452,7 +457,7 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       await recarregar();
       const porTelefone = new Map(resumos.map((r) => [r.telefone, r]));
       const porCpf = new Map(resumos.filter((r) => r.cpf).map((r) => [String(r.cpf).replace(/\D/g, ''), r]));
-      return data.vendas
+      const lista = data.vendas
         .filter((v) => !fora.has(Number(v.operacao_id)))
         .map((v) => {
           const tel = normalizarTelefone(v.cliente.celular);
@@ -460,6 +465,21 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
           return { ...v, telefone: tel, clienteAcker: r ? resumo(r) : null };
         })
         .sort((a, b) => String(b.hora).localeCompare(String(a.hora)));
+      // Compras lançadas à mão no Caixa no mesmo dia: a venda do PDV pode ser a mesma (evita lançar 2 vezes)
+      const clientesIds = [...new Set(lista.map((v) => v.clienteAcker?.id).filter(Boolean))];
+      if (clientesIds.length) {
+        const desde = lista.reduce((m, v) => (String(v.data) < m ? String(v.data) : m), '9999-12-31');
+        const manuais = ok(await supabase.from('gb_compras').select('cliente_id, data, valor_centavos, valor_final_centavos')
+          .in('cliente_id', clientesIds).is('uniplus_operacao_id', null).eq('status', 'ok').gte('data', `${desde.slice(0, 10)}T00:00:00-03:00`));
+        for (const v of lista) {
+          if (!v.clienteAcker) continue;
+          v.lancadasNoCaixa = manuais.filter((c) => c.cliente_id === v.clienteAcker.id && diaSP(c.data) === String(v.data).slice(0, 10))
+            .map((c) => ({ data: c.data, valorCentavos: c.valor_centavos, valorFinalCentavos: c.valor_final_centavos }));
+        }
+      }
+      lista.lidas = data.lidas || 0;
+      lista.falhas = data.falhas || 0;
+      return lista;
     },
 
     async ignorarVendaUniplus(operacaoId, motivo = null) {

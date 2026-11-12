@@ -405,7 +405,7 @@ export function baseDosItens(itens, marcados = null) {
 export function descontoPareceGiftback(descontoCentavos, giftback, baseCentavos) {
   if (!giftback || !descontoCentavos) return false;
   const esperado = giftback.percentual ? Math.round(baseCentavos * giftback.percentual / 100) : giftback.valorCentavos;
-  return Math.abs(descontoCentavos - esperado) <= 10;
+  return Math.abs(descontoCentavos - esperado) <= 5; // até 5 centavos (arredondamento do PDV); é só sugestão, a caixa confere
 }
 
 /** Hora do Uniplus ('2026-11-09T15:28:52.193', sem fuso) -> ISO com fuso de Brasília. */

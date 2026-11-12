@@ -7,7 +7,7 @@
 import {
   CONFIG_PADRAO, calcularCompra, giftbackVigente, gerarCodigo, planejarMensagens,
   clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
-} from './motor.js?v=20261111200453';
+} from './motor.js?v=20261111213826';
 
 const CHAVE = 'giftback-acker-teste-v1';
 
@@ -221,6 +221,11 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
       const config = percentual ? { ...doCliente, percentual: Number(percentual) } : doCliente; // % só desta venda
       const agora = data ? new Date(data) : relogio();
       const atual = giftbackAtivoDe(clienteId);
+      // Venda antiga lançada depois de um giftback mais novo (ex.: venda de ontem puxada do PDV hoje):
+      // não pode usar nem trocar um giftback que ainda nem existia na hora da venda.
+      if (data && atual && new Date(atual.criadoEm) > agora) {
+        throw new Error('Esta venda é de antes do giftback atual do cliente (que foi gerado depois dela). Lance as vendas na ordem em que aconteceram, ou ignore esta venda.');
+      }
       const r = calcularCompra({ valorCentavos, giftbackAtivo: atual, usarGiftback, config, agora });
 
       const compra = {

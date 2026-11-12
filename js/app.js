@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261111200453';
-import { criarDadosLocal } from './dados-local.js?v=20261111200453';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261111200453';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111200453';
-import { criarTelasExtras } from './telas-extra.js?v=20261111200453';
+import * as M from './motor.js?v=20261111213826';
+import { criarDadosLocal } from './dados-local.js?v=20261111213826';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261111213826';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111213826';
+import { criarTelasExtras } from './telas-extra.js?v=20261111213826';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -900,6 +900,10 @@ async function telaUniplus() {
     const fid = v.filter((x) => x.cliente.fidelidade || x.clienteAcker);
     const outras = v.filter((x) => !(x.cliente.fidelidade || x.clienteAcker));
     situacao.textContent = vendasUniplus ? `${fid.length} venda${fid.length === 1 ? '' : 's'} de clientes do Club para lançar. ${outras.length} de outros clientes (sem cartão fidelidade).` : '';
+    if (vendasUniplus?.falhas) {
+      situacao.append(h('div', { class: 'caixa-info vermelha', style: 'margin-top:8px' },
+        h('b', {}, `Atenção: ${vendasUniplus.falhas} operação(ões) do Uniplus não puderam ser lidas`), ' (instabilidade do Uniplus). A lista pode estar incompleta: clique em "Puxar vendas" de novo daqui a pouco.'));
+    }
     trocar(lista,
       fid.length ? fid.map((x) => cartaoVenda(x)) : (vendasUniplus ? h('div', { class: 'cartao vazio' }, 'Nenhuma venda nova de cliente do Club. Tudo lançado! 🌿') : null),
       outras.length ? h('details', { class: 'cartao', style: 'margin-top:14px' },
@@ -910,6 +914,13 @@ async function telaUniplus() {
 
   function cartaoVenda(v) {
     const cartao = h('div', { class: 'cartao venda' });
+    if (v.lancadasNoCaixa?.length) {
+      cartao.append(h('div', { class: 'alerta-repetido', role: 'alert', style: 'margin:0 0 12px' },
+        h('div', { class: 'alerta-titulo' }, 'Cuidado: pode já ter sido lançada no Caixa'),
+        h('div', {}, 'Neste dia este cliente já tem compra lançada à mão no Caixa: ',
+          v.lancadasNoCaixa.map((c) => `${M.formatarReais(c.valorCentavos)} às ${new Date(c.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`).join(', '),
+          '. Se for a mesma venda, clique em "Ignorar esta venda".')));
+    }
     const marcados = new Set(v.itens.map((i, k) => (i.promocional ? null : k)).filter((k) => k != null));
     const g = v.clienteAcker?.giftback || null;
     const usar = h('input', { type: 'checkbox' });
