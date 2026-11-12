@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261112083317';
-import { criarDadosLocal } from './dados-local.js?v=20261112083317';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261112083317';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261112083317';
-import { criarTelasExtras } from './telas-extra.js?v=20261112083317';
+import * as M from './motor.js?v=20261112083912';
+import { criarDadosLocal } from './dados-local.js?v=20261112083912';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261112083912';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261112083912';
+import { criarTelasExtras } from './telas-extra.js?v=20261112083912';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -361,8 +361,10 @@ async function baixarCopiaAgora() {
 }
 
 /** Lembrete semanal, só para o administrador: a cópia que fica FORA do banco é a que salva se o banco inteiro falhar. */
+let backupDrive = null; // última cópia automática no Google Drive (lida ao abrir o sistema)
 function lembreteCopia() {
   if (!usuarioAdmin || dados.modo !== 'online') return null;
+  if (backupDrive?.ultima && M.diasEntre(M.diaSP(backupDrive.ultima), hoje()) <= 2) return null; // cópia automática em dia
   const d = diasSemBaixarCopia();
   if (d != null && d <= 7) return null;
   const cartao = h('div', { class: 'cartao lembrete-copia' },
@@ -1482,6 +1484,21 @@ function cartaoDadosOnline() {
   let baixadaEm = null;
   try { baixadaEm = localStorage.getItem('gb_ultima_copia_baixada'); } catch { /* sem armazenamento local */ }
   const diasSemBaixar = baixadaEm ? M.diasEntre(baixadaEm, hoje()) : null;
+  // Cópia automática no Google Drive (feita pelo computador do Jacson, todo dia)
+  const statusDrive = h('div', { class: 'caixa-info cinza pequeno', style: 'margin-top:10px' }, 'Conferindo a cópia automática no Google Drive…');
+  dados.statusBackupDrive?.().then((b) => {
+    backupDrive = b;
+    if (!b?.ultima) {
+      statusDrive.className = 'caixa-info ambar pequeno';
+      trocar(statusDrive, h('b', {}, 'Cópia automática no Google Drive: ainda não configurada. '), 'No computador do Jacson, rode "CONFIGURAR COPIA AUTOMATICA.bat" (pasta GIFTBACK ACKER).');
+      return;
+    }
+    const d = M.diasEntre(M.diaSP(b.ultima), hoje());
+    statusDrive.className = 'caixa-info pequeno ' + (d <= 2 ? 'verde' : 'vermelha');
+    trocar(statusDrive, h('b', {}, 'Cópia automática no Google Drive: '),
+      `última em ${new Date(b.ultima).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} (${b.clientes ?? '?'} clientes, ${b.compras ?? '?'} compras), na pasta Meu Drive > BACKUP GIFTBACK ACKER.`,
+      d > 2 ? ` Está há ${d} dias sem copiar: o computador do Jacson ficou desligado? Veja o arquivo backup.log em C:\Users\User\.giftback-acker.` : '');
+  }).catch(() => trocar(statusDrive, 'Não foi possível conferir a cópia automática agora.'));
   const ultimaBaixada = h('p', { class: 'pequeno ' + (diasSemBaixar == null || diasSemBaixar > 7 ? 'txt-vermelho' : 'suave'), style: 'margin-top:8px' },
     diasSemBaixar == null ? 'Neste computador ainda não foi baixada nenhuma cópia.'
       : diasSemBaixar === 0 ? 'Última cópia baixada neste computador: hoje.'
@@ -1544,6 +1561,7 @@ function cartaoDadosOnline() {
       telaConfig();
     }) }, 'Baixar cópia de segurança agora'),
     ultimaBaixada,
+    statusDrive,
     h('h3', { style: 'margin-top:18px' }, 'Cópias automáticas'),
     h('p', { class: 'suave', style: 'margin:6px 0 10px' }, 'O sistema guarda sozinho uma cópia por dia (na primeira vez que alguém abre o Giftback Acker no dia) e mantém as dos últimos 14 dias. Servem para voltar atrás se algo for apagado ou alterado por engano.'),
     copias,
@@ -1701,6 +1719,7 @@ async function abrirSistema() {
   atualizarContador();
   // Cópia de segurança automática do dia (o banco faz 1 por dia; se falhar, não atrapalha o uso)
   dados.copiaDiaria?.().catch(() => {});
+  dados.statusBackupDrive?.().then((b) => { backupDrive = b; }).catch(() => {});
   // Recompra 90/180 dias e Aniversário: cria os cupons e as mensagens do dia (não repete)
   dados.gerarAutomaticas?.().then((n) => { if (n) atualizarContador(); }).catch(() => {});
   setTimeout(conferirVersao, 60 * 1000); // e depois a cada 10 minutos / ao voltar para a janela

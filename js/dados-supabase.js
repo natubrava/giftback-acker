@@ -4,7 +4,7 @@
 import {
   CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
   TIPOS_RETORNO,
-} from './motor.js?v=20261112083317';
+} from './motor.js?v=20261112083912';
 
 const PAGINA = 1000;
 
@@ -444,6 +444,12 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       } }));
       if (n) await recarregar();
       return n || 0;
+    },
+
+    /** Última cópia automática gravada no Google Drive pelo computador (scripts/backup_drive.mjs). */
+    async statusBackupDrive() {
+      const r = ok(await supabase.from('gb_config').select('valor').eq('chave', 'backup_drive'));
+      return r[0]?.valor || null;
     },
 
     /** Relê do banco a lista de clientes e os giftbacks ativos (o que outro aparelho lançou aparece aqui). */
