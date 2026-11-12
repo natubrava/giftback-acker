@@ -7,7 +7,8 @@
 import {
   CONFIG_PADRAO, calcularCompra, giftbackVigente, gerarCodigo, planejarMensagens,
   clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
-} from './motor.js?v=20261111213826';
+  automaticasDoDia, TIPOS_RETORNO, somarDias, fimDoDiaSP,
+} from './motor.js?v=20261111220614';
 
 const CHAVE = 'giftback-acker-teste-v1';
 
@@ -56,14 +57,14 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
   const clientePorId = (id) => estado.clientes.find((c) => c.id === id) || null;
 
   function resumoCliente(c) {
-    let compras = 0, totalCentavos = 0, ultima = null, primeira = null;
+    let compras = 0, totalCentavos = 0, ultima = null, primeira = null, maior = 0;
     for (const p of estado.compras) {
       if (p.clienteId !== c.id || p.status !== 'ok') continue;
-      compras++; totalCentavos += p.valorFinalCentavos;
+      compras++; totalCentavos += p.valorFinalCentavos; maior = Math.max(maior, p.valorCentavos || 0);
       if (!ultima || p.data > ultima) ultima = p.data;
       if (!primeira || p.data < primeira) primeira = p.data;
     }
-    return { ...c, giftback: giftbackAtivoDe(c.id), compras, totalCentavos, ultimaCompra: ultima, primeiraCompra: primeira };
+    return { ...c, giftback: giftbackAtivoDe(c.id), compras, totalCentavos, ultimaCompra: ultima, primeiraCompra: primeira, maiorCompraCentavos: maior };
   }
 
   return {
@@ -317,6 +318,10 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
         const giftback = estado.giftbacks.find((g) => g.id === m.giftbackId);
         const cliente = clientePorId(m.clienteId);
         if (!giftback || !cliente || giftback.status !== 'ativo' || cliente.semMensagens) continue; // quem não quer mensagens fica fora
+        if (TIPOS_RETORNO.includes(m.tipo)) { // voltou a comprar depois que a mensagem de retorno nasceu: não manda mais
+          const ultima = resumoCliente(cliente).ultimaCompra;
+          if (ultima && diaSP(ultima) >= m.devidaEm) continue;
+        }
         fila.push({ ...m, giftback, cliente });
       }
       return organizarFila(fila, hoje);
@@ -430,6 +435,28 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
         .map((m) => ({ ...m, giftback: estado.giftbacks.find((g) => g.id === m.giftbackId), cliente: clientePorId(m.clienteId) }))
         .filter((m) => m.cliente && !m.cliente.excluidoEm && m.giftback)
         .sort((a, b) => b.devidaEm.localeCompare(a.devidaEm));
+    },
+
+    async ehAdmin() { return true; }, // no modo teste não há restrição
+
+    /** Recompra 90/180 dias e Aniversário: cria os cupons e as mensagens do dia (não repete). */
+    async gerarAutomaticas() {
+      expirarVencidos();
+      const hoje = diaSP(relogio());
+      const novas = automaticasDoDia({ clientes: estado.clientes.map(resumoCliente), hoje, config: configAtual(), mensagens: estado.mensagens });
+      for (const a of novas) {
+        const g = {
+          id: novoId(), clienteId: a.clienteId, tipo: 'resgate', percentual: a.percentual,
+          codigo: gerarCodigo(configAtual().prefixoCodigo, (cod) => estado.giftbacks.some((x) => x.codigo === cod)),
+          valorCentavos: 0, minimoCentavos: a.minimoCentavos, criadoEm: relogio().toISOString(),
+          expiraEm: fimDoDiaSP(somarDias(hoje, a.validadeDias)), status: 'ativo',
+          compraOrigemId: null, compraUsoId: null, usadoEm: null, origem: 'acker',
+        };
+        estado.giftbacks.push(g);
+        estado.mensagens.push({ id: novoId(), clienteId: a.clienteId, giftbackId: g.id, tipo: a.tipo, devidaEm: hoje, status: 'pendente', enviadaEm: null, origem: 'acker' });
+      }
+      if (novas.length) salvar();
+      return novas.length;
     },
 
     /** Cópia de segurança: tudo num arquivo só. */

@@ -1,7 +1,7 @@
 // telas-extra.js — Telas "Relatórios" (matriz RFM) e "Campanhas".
 // Recebe do app.js as ferramentas de tela (h, trocar, avisar...) para não duplicar código.
-import * as M from './motor.js?v=20261111213826';
-import { SEGMENTOS_RFM, classificarRFM, resumoGrupo, filtrarPublico, descreverPublico, segmentoRFM, limitesRFM, explicarSegmento } from './rfm.js?v=20261111213826';
+import * as M from './motor.js?v=20261111220614';
+import { SEGMENTOS_RFM, classificarRFM, resumoGrupo, filtrarPublico, descreverPublico, segmentoRFM, limitesRFM, explicarSegmento } from './rfm.js?v=20261111220614';
 
 // Em qual quadradinho da grade 5x5 aparece o nome de cada categoria (coluna = recência R, linha = frequência/valor FM).
 const ROTULO = { nao_pode_perder: '2,5', fiel: '4,5', campeao: '5,5', em_risco: '2,4', atencao: '3,3', possivel_fiel: '5,3',
@@ -223,6 +223,7 @@ export function criarTelasExtras(ctx) {
     const nome = h('input', { type: 'text', class: 'entrada', placeholder: 'Ex.: Resgate hibernando novembro' });
     const diasMin = h('input', { type: 'number', class: 'entrada', min: 0, placeholder: 'ex.: 90' });
     const gastoMin = h('input', { type: 'text', class: 'entrada', inputMode: 'decimal', placeholder: 'ex.: 50' });
+    const maiorMin = h('input', { type: 'text', class: 'entrada', inputMode: 'decimal', placeholder: 'ex.: 50' });
     const sexo = h('select', { class: 'entrada' }, h('option', { value: '' }, 'Todos'), h('option', { value: 'F' }, 'Mulheres'), h('option', { value: 'M' }, 'Homens'));
     const semGift = h('input', { type: 'checkbox' });
     const limite = h('input', { type: 'date', class: 'entrada', value: M.somarDias(hoje(), 15) });
@@ -234,6 +235,7 @@ export function criarTelasExtras(ctx) {
 
     const filtro = () => ({
       segmentos: [...marcados], diasMin: diasMin.value || null, gastoMinCentavos: M.lerReais(gastoMin.value) || 0,
+      maiorCompraMinCentavos: M.lerReais(maiorMin.value) || 0,
       sexo: sexo.value, semGiftback: semGift.checked,
     });
     const publico = () => filtrarPublico(todos, filtro());
@@ -253,7 +255,7 @@ export function criarTelasExtras(ctx) {
         ? textoCampanha({ texto: texto.value, dataLimite: limite.value }, p[0] || { nome: 'Ana' }) : 'Escreva a mensagem para ver como fica.';
     }
     modelo.addEventListener('change', () => { if (modelo.value !== '') { texto.value = modelos[Number(modelo.value)].texto; if (!nome.value) nome.value = modelos[Number(modelo.value)].nome; } atualizar(); });
-    [diasMin, gastoMin, sexo, semGift, limite, texto].forEach((el) => el.addEventListener('input', atualizar));
+    [diasMin, gastoMin, maiorMin, sexo, semGift, limite, texto].forEach((el) => el.addEventListener('input', atualizar));
     if (modelos.length) { modelo.value = '0'; texto.value = modelos[0].texto; }
 
     criar.onclick = () => tentar(async () => {
@@ -279,7 +281,8 @@ export function criarTelasExtras(ctx) {
         chips,
         h('div', { class: 'grade', style: 'margin-top:12px' },
           h('label', { class: 'campo' }, h('span', {}, 'Sem comprar há pelo menos (dias)'), diasMin),
-          h('label', { class: 'campo' }, h('span', {}, 'Já gastou pelo menos (R$)'), gastoMin),
+          h('label', { class: 'campo' }, h('span', {}, 'Já gastou pelo menos (R$, somando tudo)'), gastoMin),
+          h('label', { class: 'campo', title: 'Tira quem só faz compras pequenas (ex.: R$ 2 ou R$ 3)' }, h('span', {}, 'Fez pelo menos uma compra de (R$)'), maiorMin),
           h('label', { class: 'campo' }, h('span', {}, 'Sexo'), sexo)),
         h('label', { class: 'usar', style: 'margin-top:10px' }, semGift, 'Não mandar para quem já tem giftback ativo'),
         contagem),
@@ -325,10 +328,16 @@ export function criarTelasExtras(ctx) {
         botoes();
         atualizarProgresso();
       });
-      function botoes() {
-        if (d.status === 'pendente') {
+      function botoes(aberta = false) {
+        // 2 cliques: abre o WhatsApp; só depois do "✓ Enviei" conta como enviada
+        const abrirConversa = () => { if (abrirWhatsApp(d.cliente, textoCampanha(campanha, d.cliente))) botoes(true); };
+        if (d.status === 'pendente' && aberta) {
           trocar(acoes,
-            h('button', { class: 'botao whats', onclick: () => { if (abrirWhatsApp(d.cliente, textoCampanha(campanha, d.cliente))) marcar('enviada'); } }, 'Enviar no WhatsApp'),
+            h('button', { class: 'botao principal enviei', onclick: () => marcar('enviada') }, '✓ Enviei'),
+            h('button', { class: 'link pequeno', onclick: abrirConversa }, 'abrir de novo'));
+        } else if (d.status === 'pendente') {
+          trocar(acoes,
+            h('button', { class: 'botao whats', onclick: abrirConversa }, 'Abrir no WhatsApp'),
             h('button', { class: 'botao', onclick: () => marcar('pulada') }, 'Pular'));
         } else {
           trocar(acoes, h('span', { class: 'etiqueta ' + (d.status === 'enviada' ? 'verde' : 'cinza') }, d.status === 'enviada' ? 'Enviada ✓' : 'Pulada'),

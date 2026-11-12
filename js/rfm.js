@@ -7,7 +7,7 @@
 //   FM = média de F e M arredondada para baixo.
 //   A categoria sai da posição (R, FM) na grade 5x5 padrão de RFM.
 // As faixas fixas abaixo ficam só como referência/explicação.
-import { diaSP, diasEntre } from './motor.js?v=20261111213826';
+import { diaSP, diasEntre } from './motor.js?v=20261111220614';
 
 export const FAIXAS_RECENCIA = Object.freeze([30, 60, 90, 180]); // dias
 export const FAIXAS_FREQUENCIA = Object.freeze([2, 3, 5, 10]); // compras
@@ -182,6 +182,7 @@ export function filtrarPublico(clientesRFM, filtro = {}) {
     if (filtro.diasMin != null && filtro.diasMin !== '' && c.rfm.diasSemComprar < Number(filtro.diasMin)) return false;
     if (filtro.diasMax != null && filtro.diasMax !== '' && c.rfm.diasSemComprar > Number(filtro.diasMax)) return false;
     if (filtro.gastoMinCentavos && c.totalCentavos < filtro.gastoMinCentavos) return false;
+    if (filtro.maiorCompraMinCentavos && (c.maiorCompraCentavos || 0) < filtro.maiorCompraMinCentavos) return false;
     if (filtro.comprasMin && c.compras < Number(filtro.comprasMin)) return false;
     if (filtro.sexo && c.sexo !== filtro.sexo) return false;
     if (filtro.semGiftback && c.giftback) return false;
@@ -197,6 +198,7 @@ export function descreverPublico(filtro = {}) {
   if (filtro.diasMin) partes.push(`${filtro.diasMin}+ dias sem comprar`);
   if (filtro.diasMax) partes.push(`até ${filtro.diasMax} dias sem comprar`);
   if (filtro.gastoMinCentavos) partes.push(`gastou R$ ${(filtro.gastoMinCentavos / 100).toFixed(0)}+`);
+  if (filtro.maiorCompraMinCentavos) partes.push(`compra de R$ ${(filtro.maiorCompraMinCentavos / 100).toFixed(0)}+`);
   if (filtro.comprasMin) partes.push(`${filtro.comprasMin}+ compras`);
   if (filtro.sexo) partes.push(filtro.sexo === 'F' ? 'mulheres' : 'homens');
   if (filtro.semGiftback) partes.push('sem giftback ativo');

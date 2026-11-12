@@ -50,6 +50,15 @@ export const CONFIG_PADRAO = Object.freeze({
       'Aproveite para voltar e escolher seus produtos favoritos! Estamos esperando por você. 😊\n' +
       'Um abraço!',
   }),
+  // Mensagens automáticas de retorno (como os fluxos da Zoppy): cria um cupom de % e põe a mensagem na fila.
+  // Zoppy: Recompra 90 dias = 10%, Recompra 180 dias = 15%, sem compra mínima, validade 30 dias.
+  // janelaDias: só entra quem completou os dias há no máximo esta quantidade de dias (não acorda quem sumiu há meses).
+  automaticas: Object.freeze({
+    janelaDias: 7,
+    recompra90: Object.freeze({ ativo: true, dias: 90, percentual: 10, validadeDias: 30, minimoCentavos: 0 }),
+    recompra180: Object.freeze({ ativo: true, dias: 180, percentual: 15, validadeDias: 30, minimoCentavos: 0 }),
+    aniversario: Object.freeze({ ativo: true, percentual: 10, validadeDias: 15, minimoCentavos: 0 }),
+  }),
   // Perfis especiais de cliente (parcerias e família). Cada um pode ter % de giftback e compra mínima
   // próprios; em branco (null) usa a regra geral. compraMinimaCentavos = 0 significa "sem mínimo".
   perfis: Object.freeze([
@@ -199,7 +208,7 @@ export function normalizarTelefone(texto) {
 /** '47999998888' -> '(47) 99999-8888' */
 export function formatarTelefone(tel) {
   const d = String(tel ?? '').replace(/\D/g, '');
-  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 3)}.${d.slice(3, 7)}-${d.slice(7)}`;
   if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return String(tel ?? '');
 }
@@ -382,7 +391,7 @@ export function montarMensagem(modelo, { cliente, giftback, config = CONFIG_PADR
     primeiro_nome: primeiroNome(cliente?.nome),
     nome: `${cliente?.nome ?? ''} ${cliente?.sobrenome ?? ''}`.trim(),
     valor: giftback ? (giftback.percentual ? `${giftback.percentual}%` : formatarReais(giftback.valorCentavos)) : '',
-    minimo: giftback ? formatarReais(giftback.minimoCentavos) : '',
+    minimo: giftback ? (giftback.minimoCentavos ? formatarReais(giftback.minimoCentavos) : 'qualquer valor') : '',
     validade: giftback ? formatarDia(diaSP(giftback.expiraEm)) : '',
     codigo: giftback?.codigo ?? '',
     loja: config.nomeLoja,
@@ -504,3 +513,68 @@ export function registrarMudancaRegras(configAnterior, novas, { em, por = null }
   hist.push({ em, por, regras: depois });
   return hist;
 }
+
+/**
+ * Máscara do WhatsApp enquanto digita: 47999328511 vira (47) 9.9932-8511; fixo: (47) 3348-3186.
+ * Aceita colar com +55 na frente.
+ */
+export function mascararTelefone(texto) {
+  let d = String(texto ?? '').replace(/\D/g, '');
+  if (d.length > 11 && d.startsWith('55')) d = d.slice(2);
+  d = d.slice(0, 11);
+  if (!d) return '';
+  if (d.length <= 2) return `(${d}`;
+  const ddd = d.slice(0, 2);
+  const r = d.slice(2);
+  let resto;
+  if (r[0] === '9') { // celular
+    resto = r[0];
+    if (r.length > 1) resto += '.' + r.slice(1, 5);
+    if (r.length > 5) resto += '-' + r.slice(5, 9);
+  } else {
+    resto = r.slice(0, 4);
+    if (r.length > 4) resto += '-' + r.slice(4, 8);
+  }
+  return `(${ddd}) ${resto}`;
+}
+
+/**
+ * Mensagens automáticas de retorno que devem nascer hoje (Recompra 90/180 dias e Aniversário).
+ * Mesma regra da função do banco gb_gerar_automaticas (migração 0011).
+ * @param clientes [{id, ultimaCompra, nascimento, semMensagens, excluidoEm, giftback (ativo ou null)}]
+ * @param mensagens [{clienteId, tipo, devidaEm}] já existentes (para não repetir)
+ * @returns [{clienteId, tipo, percentual, validadeDias, minimoCentavos}]
+ */
+export function automaticasDoDia({ clientes, hoje, config = CONFIG_PADRAO, mensagens = [] }) {
+  const a = { ...CONFIG_PADRAO.automaticas, ...(config.automaticas || {}) };
+  const janela = Number(a.janelaDias) || 7;
+  const dentro = (dia) => dia <= hoje && diasEntre(dia, hoje) <= janela;
+  const novas = [];
+  for (const c of clientes) {
+    if (c.excluidoEm || c.semMensagens || c.giftback || !c.ultimaCompra) continue; // 1 cupom ativo por cliente
+    const doCliente = mensagens.filter((m) => m.clienteId === c.id);
+    const ultima = diaSP(c.ultimaCompra);
+    let criou = false;
+    for (const tipo of ['recompra90', 'recompra180']) {
+      const f = a[tipo];
+      if (!f?.ativo) continue;
+      if (!dentro(somarDias(ultima, Number(f.dias)))) continue;
+      if (doCliente.some((m) => m.tipo === tipo && m.devidaEm > ultima)) continue;
+      novas.push({ clienteId: c.id, tipo, percentual: Number(f.percentual), validadeDias: Number(f.validadeDias) || 30, minimoCentavos: Number(f.minimoCentavos) || 0 });
+      criou = true;
+      break;
+    }
+    const f = a.aniversario;
+    if (criou || !f?.ativo || !c.nascimento) continue;
+    const ano = hoje.slice(0, 4);
+    let aniv = `${ano}${String(c.nascimento).slice(4, 10)}`;
+    if (aniv.endsWith('-02-29') && new Date(Date.UTC(Number(ano), 1, 29)).getUTCMonth() !== 1) aniv = `${ano}-03-01`;
+    if (!dentro(aniv)) continue;
+    if (doCliente.some((m) => m.tipo === 'aniversario' && m.devidaEm >= aniv)) continue;
+    novas.push({ clienteId: c.id, tipo: 'aniversario', percentual: Number(f.percentual), validadeDias: Number(f.validadeDias) || 15, minimoCentavos: Number(f.minimoCentavos) || 0 });
+  }
+  return novas;
+}
+
+/** Tipos de mensagem de retorno (cupom de %, sem ligação com compra): aparecem com outra cor na fila. */
+export const TIPOS_RETORNO = Object.freeze(['recompra90', 'recompra180', 'aniversario']);

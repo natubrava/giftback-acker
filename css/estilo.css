@@ -573,3 +573,22 @@ body { background: linear-gradient(180deg, #f7f5ee 0%, #f1eee4 100%) fixed; }
 .linha-promo { margin-top: 6px; }
 .promo-rotulo input { font-size: 1.05rem; padding: 2px 8px; }
 .caixa-valor:has(.linha-promo:not([hidden])) .linha-pct { margin-top: 4px; }
+
+/* "✓ Enviei": segundo clique do envio pelo WhatsApp */
+.botao.enviei { background: linear-gradient(180deg, #2a70a6 0%, #1f5c8a 100%); border-color: #174669; box-shadow: 0 1px 0 rgba(255,255,255,.25) inset, 0 2px 0 #174669, 0 4px 10px rgba(31, 92, 138, .25); }
+.botao.enviei:hover { background: linear-gradient(180deg, #2f7ab4 0%, #22669a 100%); }
+
+/* ═══════════ Mensagens de retorno (Recompra 90/180, Aniversário) ═══════════ */
+.etiqueta.roxa { background: #ece4fb; color: #5b3a9e; }
+.etiqueta.rosa { background: #fbe4f0; color: #a3326f; }
+.msg.retorno { border-left: 5px solid #7b56c4; background: linear-gradient(90deg, #f7f3fe 0%, #ffffff 40%); }
+.msg.retorno.tipo-aniversario { border-left-color: #c2478a; background: linear-gradient(90deg, #fdf2f8 0%, #ffffff 40%); }
+.gift.resgate { border-color: #7b56c4; background: linear-gradient(180deg, #f5f0fe 0%, #e9e0fb 100%); }
+.gift.resgate .gift-rotulo, .gift.resgate .gift-valor, .gift.resgate .gift-icone { color: #4f2f91; }
+.gift.resgate .gift-divisa { background: #cbb8ef; }
+.auto-linha { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px 14px; align-items: center; padding: 10px 12px; border-radius: 10px; border-left: 4px solid #7b56c4; background: #f8f5fe; }
+.auto-linha + .auto-linha { margin-top: 8px; }
+.auto-linha.tipo-aniversario { border-left-color: #c2478a; background: #fdf4f9; }
+.auto-linha .usar { margin: 0; }
+.entrada.curta { width: 72px; padding: 5px 8px; }
+@media (max-width: 560px) { .auto-linha { grid-template-columns: 1fr 1fr; } .auto-linha .usar { grid-column: 1 / -1; } }

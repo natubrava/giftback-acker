@@ -3,7 +3,8 @@
 // e gb_cancelar_compra) e garante as regras críticas (1 giftback ativo, só a equipe acessa).
 import {
   CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
-} from './motor.js?v=20261111213826';
+  TIPOS_RETORNO,
+} from './motor.js?v=20261111220614';
 
 const PAGINA = 1000;
 
@@ -70,7 +71,7 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
 
   const resumo = (r) => ({
     ...cliente(r), giftback: ativos.get(r.id) || null, compras: r.compras, totalCentavos: Number(r.total_centavos),
-    ultimaCompra: r.ultima_compra, primeiraCompra: r.primeira_compra || null,
+    ultimaCompra: r.ultima_compra, primeiraCompra: r.primeira_compra || null, maiorCompraCentavos: Number(r.maior_compra_centavos || 0),
   });
 
   function configAtual() {
@@ -111,6 +112,11 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
     async sair() { await supabase.auth.signOut(); },
     async ehEquipe() {
       const { data, error } = await supabase.rpc('gb_e_equipe');
+      return !error && data === true;
+    },
+    /** Administrador (Jacson): só ele apaga todos os dados ou apaga cliente de vez. */
+    async ehAdmin() {
+      const { data, error } = await supabase.rpc('gb_e_admin');
       return !error && data === true;
     },
     aoMudarSessao(fn) { return supabase.auth.onAuthStateChange((evento, sessao) => fn(evento, sessao)); },
@@ -281,6 +287,11 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
         .eq('status', 'pendente').lte('devida_em', hoje).order('id'));
       const fila = linhas
         .filter((m) => m.giftback?.status === 'ativo' && m.cliente && !m.cliente.sem_mensagens) // quem não quer mensagens fica fora
+        .filter((m) => { // mensagem de retorno: se o cliente voltou a comprar depois que ela nasceu, não manda mais
+          if (!TIPOS_RETORNO.includes(m.tipo)) return true;
+          const ultima = resumos.find((r) => r.id === m.cliente_id)?.ultima_compra;
+          return !ultima || diaSP(ultima) < m.devida_em;
+        })
         .map((m) => ({ ...mensagem(m), giftback: giftback(m.giftback), cliente: cliente(m.cliente) }));
       return organizarFila(fila, hoje);
     },
@@ -393,6 +404,19 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       for (const [tabela, chave] of Object.entries(tabelas)) copia[tabela] = await todos(() => supabase.from(tabela).select('*').order(chave));
       copia.historicoRegras = historicoRegras(configAtual()); // inclui o padrão da Zoppy, mesmo que as regras nunca tenham sido alteradas
       return copia;
+    },
+
+    /** Recompra 90/180 dias e Aniversário: cria os cupons e as mensagens do dia (não repete). */
+    async gerarAutomaticas() {
+      const a = { ...CONFIG_PADRAO.automaticas, ...(configAtual().automaticas || {}) };
+      const fluxo = (tipo) => (a[tipo]?.ativo ? [{ tipo, dias: a[tipo].dias, percentual: a[tipo].percentual, validade_dias: a[tipo].validadeDias, minimo_centavos: a[tipo].minimoCentavos || 0 }] : []);
+      const n = ok(await supabase.rpc('gb_gerar_automaticas', { p: {
+        prefixo: configAtual().prefixoCodigo, janela_dias: a.janelaDias,
+        fluxos: [...fluxo('recompra90'), ...fluxo('recompra180')],
+        aniversario: a.aniversario?.ativo ? { percentual: a.aniversario.percentual, validade_dias: a.aniversario.validadeDias, minimo_centavos: a.aniversario.minimoCentavos || 0 } : null,
+      } }));
+      if (n) await recarregar();
+      return n || 0;
     },
 
     /** Cópia automática do dia (feita no banco, 1 por dia, guardada 14 dias). Devolve true se criou agora. */

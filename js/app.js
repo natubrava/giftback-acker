@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261111213826';
-import { criarDadosLocal } from './dados-local.js?v=20261111213826';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261111213826';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111213826';
-import { criarTelasExtras } from './telas-extra.js?v=20261111213826';
+import * as M from './motor.js?v=20261111220614';
+import { criarDadosLocal } from './dados-local.js?v=20261111220614';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261111220614';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111220614';
+import { criarTelasExtras } from './telas-extra.js?v=20261111220614';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -16,6 +16,7 @@ const tela = document.getElementById('tela');
 let config = M.CONFIG_PADRAO;
 const estado = { clienteId: null, busca: '', resultadoCompra: null };
 let usuarioEmail = ''; // quem está usando (para o histórico das regras)
+let usuarioAdmin = false; // só o administrador apaga todos os dados ou apaga cliente de vez
 
 // ───────────────────────── utilidades de tela ─────────────────────────
 
@@ -191,6 +192,19 @@ function comVirgulaAutomatica(campo) {
   return campo;
 }
 
+/** Formato automático do WhatsApp enquanto digita: 47999328511 vira (47) 9.9932-8511. */
+function comMascaraTelefone(campo) {
+  const digitos = (x) => String(x).replace(/\D/g, '');
+  let antes = campo.value = M.mascararTelefone(campo.value);
+  campo.addEventListener('input', (e) => {
+    let v = campo.value;
+    // apagou só um ")", "." ou "-": apaga o número junto, senão o cursor fica preso
+    if (String(e.inputType || '').startsWith('delete') && digitos(v) === digitos(antes)) v = digitos(v).slice(0, -1);
+    campo.value = antes = M.mascararTelefone(v);
+  });
+  return campo;
+}
+
 /** Lista para escolher o perfil do cliente nos formulários. */
 function seletorPerfil(atual = '') {
   const sel = h('select', {}, h('option', { value: '' }, 'Cliente comum'), (config.perfis || []).map((p) => h('option', { value: p.id }, p.nome)));
@@ -297,7 +311,7 @@ async function desenharResumoDoDia(painel) {
 }
 
 function painelNovoCliente(painel, prefill, aoSalvar, aoCancelar) {
-  const fTel = h('input', { type: 'tel', value: prefill.telefone ? M.formatarTelefone(prefill.telefone) : '', placeholder: '(47) 99999-9999', autocomplete: 'off' });
+  const fTel = comMascaraTelefone(h('input', { type: 'tel', value: prefill.telefone ? M.formatarTelefone(prefill.telefone) : '', placeholder: '(47) 9.9999-9999', autocomplete: 'off' }));
   const fNome = h('input', { type: 'text', value: prefill.nome ? prefill.nome.split(/\s+/)[0] : '', autocomplete: 'off' });
   const fSobrenome = h('input', { type: 'text', value: prefill.nome ? prefill.nome.split(/\s+/).slice(1).join(' ') : (prefill.sobrenome || ''), autocomplete: 'off' });
   const fSexo = h('select', {}, h('option', { value: '' }, 'Não informar'), h('option', { value: 'F' }, 'Feminino'), h('option', { value: 'M' }, 'Masculino'));
@@ -387,11 +401,11 @@ async function painelCliente(painel, aoFechar) {
     const urgente = faltam <= 3;
     const prazo = h('span', { class: urgente ? 'urgente' : 'prazo-extra', hidden: !urgente }, ' · ', textoPrazo(g));
     const botaoPrazo = urgente ? null : h('button', { type: 'button', class: 'info-btn', title: 'Quantos dias faltam', onclick: () => { prazo.hidden = !prazo.hidden; botaoPrazo.classList.toggle('aberto', !prazo.hidden); } }, 'i');
-    cartaoGift = h('div', { class: 'gift' + (urgente ? ' alerta' : ''), title: `Código ${g.codigo}` },
+    cartaoGift = h('div', { class: 'gift' + (urgente ? ' alerta' : '') + (g.tipo === 'resgate' ? ' resgate' : ''), title: `Código ${g.codigo}` },
       h('div', { class: 'gift-linha' },
         icone('presente', 'gift-icone'),
         h('div', { class: 'gift-esq' },
-          h('div', { class: 'gift-rotulo' }, g.tipo === 'resgate' ? 'Cupom de resgate ativo' : 'Tem giftback'),
+          h('div', { class: 'gift-rotulo' }, g.tipo === 'resgate' ? 'Cupom de retorno' : 'Tem giftback'),
           h('div', { class: 'gift-valor' }, valorGift(g))),
         h('div', { class: 'gift-divisa' }),
         h('div', { class: 'gift-lado' },
@@ -516,7 +530,7 @@ function desenharHistorico(caixa, c, redesenhar) {
     ? h('div', { class: 'historico-resumo' },
       h('span', {}, 'Última compra ', h('b', {}, dia(c.ultimaCompra)), ` (${diasDesde === 0 ? 'hoje' : diasDesde === 1 ? 'ontem' : `há ${diasDesde} dias`})`),
       h('span', {}, h('b', {}, c.compras), ` compra${c.compras > 1 ? 's' : ''}`),
-      h('span', {}, 'total ', h('b', {}, M.formatarReais(c.totalCentavos))))
+      h('span', { title: 'Soma só das compras lançadas no Club NatuBrava (não inclui vendas do PDV que não foram lançadas aqui)' }, 'total lançado no Club ', h('b', {}, M.formatarReais(c.totalCentavos))))
     : h('div', { class: 'historico-resumo' }, 'Ainda não tem compras.');
   const conteudo = h('div', { class: 'historico-conteudo' }, resumoCliente, barra, corpo);
   const seta = h('span', { class: 'historico-seta', 'aria-hidden': 'true' }, '▸');
@@ -594,7 +608,7 @@ function desenharFormulario(area, cliente, g, redesenhar) {
     previa.append(h('div', { class: 'resumo-venda' },
       vaiUsar || promo ? h('div', { class: 'conta' },
         promo ? [h('span', {}, 'Base do giftback (sem promoção)'), h('span', { class: 'direita' }, M.formatarReais(valor))] : null,
-        vaiUsar ? [h('span', {}, 'Desconto no PDV (giftback)'), h('span', { class: 'direita desconto' }, '− ' + M.formatarReais(r.descontoCentavos))] : null) : null,
+        vaiUsar ? [h('span', {}, g?.tipo === 'resgate' ? 'Desconto no PDV (cupom)' : 'Desconto no PDV (giftback)'), h('span', { class: 'direita desconto' }, '− ' + M.formatarReais(r.descontoCentavos))] : null) : null,
       h('div', { class: 'paga' }, h('span', {}, 'Cliente paga'), h('b', {}, M.formatarReais(r.valorFinalCentavos + promo)))));
     if (r.novoGiftback) {
       previa.append(h('div', { class: 'caixa-info verde curta' }, icone('presente'), h('span', {}, 'Vai ganhar ', h('b', {}, M.formatarReais(r.novoGiftback.valorCentavos)),
@@ -662,14 +676,22 @@ function desenharSucesso(area, r, cliente, aoFechar, redesenhar) {
   }
   if (r.novoGiftback) {
     const texto = M.mensagemCompleta('envio', { cliente, giftback: r.novoGiftback, config });
-    const botao = h('button', { class: 'botao whats grande' }, 'Enviar giftback pelo WhatsApp');
-    const situacao = h('span', { class: 'suave pequeno' });
-    botao.onclick = () => tentar(async () => {
+    const botao = h('button', { class: 'botao whats grande' }, 'Abrir no WhatsApp');
+    const situacao = h('span', { class: 'linha-flex' });
+    // 2 cliques: abrir a conversa e, depois de apertar Enter no WhatsApp, confirmar "✓ Enviei"
+    botao.onclick = () => {
       if (!abrirWhatsApp(cliente, texto)) return;
-      if (r.mensagemEnvio) await dados.marcarMensagem(r.mensagemEnvio.id, 'enviada');
-      situacao.textContent = 'Conversa aberta. Confira e aperte Enter no WhatsApp.';
-      await atualizarContador();
-    });
+      botao.textContent = 'Abrir de novo';
+      botao.classList.remove('grande');
+      trocar(situacao,
+        h('button', { class: 'botao principal grande enviei', onclick: () => tentar(async () => {
+          if (r.mensagemEnvio) await dados.marcarMensagem(r.mensagemEnvio.id, 'enviada');
+          trocar(situacao, h('span', { class: 'etiqueta verde' }, 'Enviada ✓'));
+          botao.remove();
+          await atualizarContador();
+        }) }, '✓ Enviei'),
+        h('span', { class: 'suave pequeno' }, 'Aperte Enter no WhatsApp e depois confirme aqui.'));
+    };
     passos.push(h('div', { class: 'passo' }, h('span', { class: 'num' }, n++), h('div', {},
       'Cliente ganhou ', h('span', { class: 'destaque-valor' }, M.formatarReais(r.novoGiftback.valorCentavos)),
       ` de giftback (código ${r.novoGiftback.codigo}, até ${dia(r.novoGiftback.expiraEm)}).`,
@@ -677,7 +699,7 @@ function desenharSucesso(area, r, cliente, aoFechar, redesenhar) {
         ? h('div', { class: 'caixa-info cinza', style: 'margin-top:8px' }, 'Este cliente não quer receber mensagens: nada será enviado pelo WhatsApp. Avise o giftback pessoalmente, se quiser.')
         : h('div', { class: 'linha-flex', style: 'margin-top:8px' }, botao, situacao),
       h('details', {}, h('summary', { class: 'pequeno', style: 'cursor:pointer;color:var(--azul);margin-top:6px' }, 'Ver a mensagem'), h('div', { class: 'msg-texto' }, texto)),
-      h('div', { class: 'suave pequeno', style: 'margin-top:4px' }, 'Se não enviar agora, ela fica na aba Mensagens.'))));
+      h('div', { class: 'suave pequeno', style: 'margin-top:4px' }, 'Enquanto não confirmar "✓ Enviei", ela continua na aba Mensagens.'))));
   } else if (r.giftbackMantidoMaior) {
     passos.push(h('div', { class: 'passo' }, h('span', { class: 'num' }, n++), h('div', {},
       `O cliente continua com o giftback de ${valorGift(r.giftbackMantidoMaior)} (código ${r.giftbackMantidoMaior.codigo}), que é maior que o desta compra. Nenhuma mensagem nova.`)));
@@ -707,7 +729,7 @@ async function desfazerCompra(compra, depois) {
 function editarCliente(painel, c, depois) {
   const fNome = h('input', { type: 'text', value: c.nome || '' });
   const fSobrenome = h('input', { type: 'text', value: c.sobrenome || '' });
-  const fTel = h('input', { type: 'tel', value: M.formatarTelefone(c.telefone) });
+  const fTel = comMascaraTelefone(h('input', { type: 'tel', value: M.formatarTelefone(c.telefone) }));
   const fSexo = h('select', {}, h('option', { value: '' }, 'Não informar'), h('option', { value: 'F' }, 'Feminino'), h('option', { value: 'M' }, 'Masculino'));
   fSexo.value = c.sexo || '';
   const fEmail = h('input', { type: 'email', value: c.email || '' });
@@ -813,12 +835,13 @@ async function telaMensagensConferencia(aba) {
 async function telaMensagens() {
   if ((estado.abaMensagens || 'fila') !== 'fila') return telaMensagensConferencia(estado.abaMensagens);
   const [fila, proximas, enviadas] = await Promise.all([dados.filaMensagens(), dados.proximasMensagens(7), dados.enviadasHoje()]);
-  const etiquetas = { envio: 'verde', lembrete: 'azul', vencendo: 'ambar' };
+  const etiquetas = { envio: 'verde', lembrete: 'azul', vencendo: 'ambar', recompra90: 'roxa', recompra180: 'roxa', aniversario: 'rosa' };
   const atrasadas = fila.filter((m) => m.atrasada).length;
   const textoAgora = (m) => M.mensagemCompleta(m.tipo, { cliente: m.cliente, giftback: m.giftback, config, hoje: hoje() });
 
   const itens = fila.map((m) => {
-    const cartao = h('div', { class: 'cartao msg' + (m.atrasada ? ' atrasada' : '') });
+    const retorno = M.TIPOS_RETORNO.includes(m.tipo);
+    const cartao = h('div', { class: 'cartao msg' + (m.atrasada ? ' atrasada' : '') + (retorno ? ` retorno tipo-${m.tipo}` : '') });
     const acoes = h('div', { class: 'msg-acoes' });
     const previa = h('div', { class: 'msg-texto' }, textoAgora(m));
     const marcar = (status) => tentar(async () => {
@@ -828,11 +851,18 @@ async function telaMensagens() {
       await atualizarContador();
     });
     function desenharAcoes(status) {
+      // 2 cliques: 1) abre o WhatsApp com o texto; 2) "✓ Enviei" depois de apertar Enter lá. Só no 2º sai da fila.
+      const abrirConversa = () => { const t = textoAgora(m); previa.textContent = t; if (abrirWhatsApp(m.cliente, t)) desenharAcoes('aberta'); };
       if (status === 'pendente') {
         trocar(acoes,
           // o texto é montado de novo NA HORA do clique: se a tela ficou aberta de um dia para o outro, o prazo continua certo
-          h('button', { class: 'botao whats', onclick: () => { const t = textoAgora(m); previa.textContent = t; if (abrirWhatsApp(m.cliente, t)) marcar('enviada'); } }, 'Enviar no WhatsApp'),
+          h('button', { class: 'botao whats', onclick: abrirConversa }, 'Abrir no WhatsApp'),
           h('button', { class: 'botao', onclick: () => marcar('pulada') }, 'Pular'));
+      } else if (status === 'aberta') {
+        trocar(acoes,
+          h('button', { class: 'botao principal enviei', onclick: () => marcar('enviada') }, '✓ Enviei'),
+          h('button', { class: 'link pequeno', onclick: abrirConversa }, 'abrir de novo'),
+          h('span', { class: 'suave pequeno' }, 'Só sai da fila quando você confirmar.'));
       } else {
         trocar(acoes, h('span', { class: 'etiqueta ' + (status === 'enviada' ? 'verde' : 'cinza') }, status === 'enviada' ? 'Enviada ✓' : 'Pulada'),
           h('button', { class: 'link pequeno', onclick: () => marcar('pendente') }, 'desfazer'));
@@ -847,7 +877,7 @@ async function telaMensagens() {
           h('span', { class: 'msg-nome' }, nomeCompleto(m.cliente)),
           h('span', { class: 'suave pequeno' }, M.formatarTelefone(m.cliente.telefone))),
         h('div', { class: 'suave pequeno', style: 'margin-top:4px' },
-          `Giftback de ${valorGift(m.giftback)} · vale até ${dia(m.giftback.expiraEm)} (${textoPrazo(m.giftback)})`,
+          retorno ? `Cupom de retorno: ${valorGift(m.giftback)} · vale até ${dia(m.giftback.expiraEm)} · o desconto é dado no caixa` : `Giftback de ${valorGift(m.giftback)} · vale até ${dia(m.giftback.expiraEm)} (${textoPrazo(m.giftback)})`,
           m.substituidas.length ? ' · substitui o lembrete que ficou para trás (o cliente recebe só esta)' : ''),
         h('details', {}, h('summary', {}, 'Ver a mensagem'), previa)),
       acoes);
@@ -864,7 +894,7 @@ async function telaMensagens() {
       h('div', { class: 'numero' }, h('b', {}, enviadas), h('span', {}, 'enviadas hoje')),
       h('div', { class: 'numero' }, h('b', {}, proximas), h('span', {}, 'nos próximos 7 dias'))),
     h('p', { class: 'suave', style: 'margin-bottom:14px' },
-      'Cada botão abre o WhatsApp Web da loja com o texto pronto: é só conferir e apertar Enter. ',
+      'Cada botão abre o WhatsApp Web da loja com o texto pronto: confira, aperte Enter lá e depois clique em "✓ Enviei" aqui (só então a mensagem sai da fila). ',
       'Mensagem não enviada continua aqui no dia seguinte, marcada como atrasada, e o prazo no texto ("vence amanhã", "em 2 dias") é recalculado na hora do envio.'),
     permissao === 'default' ? h('div', { class: 'caixa-info ambar', style: 'margin-bottom:14px' },
       'Quer que o computador avise quando houver mensagens para enviar? ',
@@ -882,7 +912,7 @@ async function telaUniplus() {
     trocar(tela, h('div', { class: 'cartao vazio' }, 'As vendas do PDV só aparecem na versão online.'));
     return;
   }
-  const dias = h('select', {}, [1, 2, 3, 5, 7].map((d) => h('option', { value: d, selected: d === 3 }, d === 1 ? 'hoje e ontem' : `últimos ${d} dias`)));
+  const dias = h('select', {}, [0, 1, 2, 3, 5, 7].map((d) => h('option', { value: d, selected: d === 3 }, d === 0 ? 'só hoje' : d === 1 ? 'hoje e ontem' : `últimos ${d} dias`)));
   const situacao = h('p', { class: 'suave pequeno', style: 'margin-top:8px' });
   const lista = h('div', { style: 'margin-top:14px' });
   const botao = h('button', { class: 'botao principal grande' }, 'Puxar vendas do Uniplus');
@@ -890,7 +920,9 @@ async function telaUniplus() {
     botao.disabled = true;
     situacao.textContent = 'Lendo as vendas no Uniplus… (leva de 20 a 60 segundos)';
     try {
-      vendasUniplus = await dados.puxarVendasUniplus(Number(dias.value));
+      const n = Number(dias.value);
+      const lidas = await dados.puxarVendasUniplus(Math.max(1, n));
+      vendasUniplus = n === 0 ? Object.assign(lidas.filter((v) => String(v.data).slice(0, 10) === hoje()), { falhas: lidas.falhas, lidas: lidas.lidas }) : lidas;
       desenharLista();
     } finally { botao.disabled = false; }
   });
@@ -925,7 +957,7 @@ async function telaUniplus() {
     const g = v.clienteAcker?.giftback || null;
     const usar = h('input', { type: 'checkbox' });
     const previa = h('div', {});
-    const fTel = h('input', { type: 'tel', class: 'entrada', style: 'max-width:200px', value: v.telefone ? M.formatarTelefone(v.telefone) : '', placeholder: 'WhatsApp do cliente' });
+    const fTel = comMascaraTelefone(h('input', { type: 'tel', class: 'entrada', style: 'max-width:200px', value: v.telefone ? M.formatarTelefone(v.telefone) : '', placeholder: 'WhatsApp do cliente' }));
     const acoes = h('div', { class: 'linha-flex', style: 'margin-top:12px' });
     let usarDecidido = false;
     const regrasCliente = M.configParaCliente(config, v.clienteAcker);
@@ -1050,7 +1082,7 @@ function cartaoExcluidos() {
         h('td', {}, c.motivoExclusao || ''),
         h('td', { style: 'white-space:nowrap' },
           h('button', { class: 'botao', onclick: () => tentar(async () => { await dados.restaurarCliente(c.id); avisar(`${nomeCompleto(c)} foi restaurado.`); await atualizarContador(); telaClientes(); }) }, 'Restaurar'), ' ',
-          h('button', { class: 'link pequeno perigo-link', onclick: () => tentar(async () => {
+          !usuarioAdmin && dados.modo === 'online' ? null : h('button', { class: 'link pequeno perigo-link', onclick: () => tentar(async () => {
             const conf = prompt(`Apagar ${nomeCompleto(c)} DE VEZ, com compras, giftbacks e mensagens?\nIsso não tem volta. Use só para clientes de teste.\n\nPara confirmar, digite: APAGAR`);
             if (conf == null || conf.trim().toUpperCase() !== 'APAGAR') { if (conf != null) avisar('Nada foi apagado.'); return; }
             await dados.apagarClienteDeVez(c.id); avisar('Apagado de vez.'); desenhar();
@@ -1218,6 +1250,33 @@ function configRegras() {
           h('td', { class: 'suave pequeno' }, x.por || ''));
       })))));
 
+  // Mensagens automáticas de retorno (Recompra 90/180 dias, Aniversário)
+  const auto = { ...M.CONFIG_PADRAO.automaticas, ...(config.automaticas || {}) };
+  const linhaAuto = (tipo, nome, explica) => {
+    const f = { ...M.CONFIG_PADRAO.automaticas[tipo], ...(auto[tipo] || {}) };
+    const ativo = h('input', { type: 'checkbox', checked: !!f.ativo });
+    const pct = h('input', { type: 'number', class: 'entrada curta', min: 1, max: 100, step: 1, value: f.percentual });
+    const val = h('input', { type: 'number', class: 'entrada curta', min: 1, step: 1, value: f.validadeDias });
+    const el = h('div', { class: 'auto-linha tipo-' + tipo },
+      h('label', { class: 'usar' }, ativo, h('span', {}, h('b', {}, nome), h('span', { class: 'suave pequeno', style: 'display:block;font-weight:400' }, explica))),
+      h('label', { class: 'linha-flex pequeno' }, 'Cupom de', pct, '%'),
+      h('label', { class: 'linha-flex pequeno' }, 'válido por', val, 'dias'));
+    return { el, valor: () => ({ ...f, ativo: ativo.checked, percentual: Number(pct.value) || f.percentual, validadeDias: Math.round(Number(val.value) || f.validadeDias) }) };
+  };
+  const a90 = linhaAuto('recompra90', 'Recompra 90 dias', 'Cliente que completou 90 dias sem comprar.');
+  const a180 = linhaAuto('recompra180', 'Recompra 180 dias', 'Cliente que completou 180 dias sem comprar.');
+  const aAniv = linhaAuto('aniversario', 'Aniversário', 'Só para quem tem data de nascimento no cadastro.');
+  const cartaoAuto = h('form', { class: 'cartao', onsubmit: (e) => { e.preventDefault(); tentar(async () => {
+    const novo = { ...auto, recompra90: a90.valor(), recompra180: a180.valor(), aniversario: aAniv.valor() };
+    if ([novo.recompra90, novo.recompra180, novo.aniversario].some((x) => !(x.percentual > 0 && x.percentual <= 100))) throw new Error('O % de cada cupom deve ficar entre 1 e 100.');
+    config = await dados.salvarConfig({ automaticas: novo });
+    avisar('Mensagens de retorno salvas.');
+  }); } },
+    h('h3', {}, 'Mensagens de retorno (automáticas)'),
+    h('p', { class: 'suave pequeno', style: 'margin:4px 0 10px' }, 'Iguais aos fluxos da Zoppy: o sistema cria um cupom de % e põe a mensagem na fila de Mensagens, com cor roxa (aniversário em rosa). O desconto é dado no caixa ao ver o cupom no cliente. Só entra quem completou os dias nos últimos 7 dias, para não mandar para quem sumiu há meses. Cliente com giftback ativo ou que não quer mensagens fica de fora. Se o cliente voltar a comprar antes do envio, a mensagem some da fila.'),
+    a90.el, a180.el, aAniv.el,
+    h('div', { class: 'linha-flex', style: 'margin-top:12px' }, h('button', { class: 'botao principal', type: 'submit' }, 'Salvar mensagens de retorno')));
+
   return h('div', {}, h('form', { class: 'cartao', onsubmit: (e) => { e.preventDefault(); salvar(); } },
     h('div', { class: 'grade' },
       h('label', { class: 'campo' }, h('span', {}, 'Giftback padrão (% da compra)'), f.percentual),
@@ -1230,6 +1289,7 @@ function configRegras() {
     exemplo,
     h('p', { class: 'suave pequeno', style: 'margin-top:8px' }, 'O % pode ser mudado em cada venda, na tela do Caixa, sem alterar este padrão. Mudanças aqui valem para os giftbacks novos: os já gerados continuam como foram combinados com o cliente.'),
     h('div', { class: 'linha-flex', style: 'margin-top:14px' }, h('button', { class: 'botao principal grande', type: 'submit' }, 'Salvar regras'))),
+  cartaoAuto,
   tabelaHist);
 }
 
@@ -1390,7 +1450,8 @@ function cartaoDadosOnline() {
     h('div', { class: 'linha-flex' }, arquivo, h('button', { class: 'botao principal', onclick: importar }, 'Importar')),
     situacao,
     h('p', { class: 'suave pequeno', style: 'margin-top:16px' }, 'No dia da troca definitiva, apague os dados de teste e importe o arquivo novo:'),
-    h('button', { class: 'botao perigo', style: 'margin-top:6px', onclick: apagar }, 'Apagar todos os dados'));
+    usuarioAdmin ? h('button', { class: 'botao perigo', style: 'margin-top:6px', onclick: apagar }, 'Apagar todos os dados')
+      : h('p', { class: 'suave pequeno', style: 'margin-top:6px' }, 'Só o administrador (Jacson) pode apagar todos os dados.'));
 }
 
 // ───────────────────────── login ─────────────────────────
@@ -1451,6 +1512,7 @@ async function depoisDoLogin() {
   }
   const s = await dados.sessao();
   usuarioEmail = s?.user?.email || '';
+  usuarioAdmin = await dados.ehAdmin?.().catch(() => false) || false;
   const usuario = document.getElementById('usuario');
   trocar(usuario, h('span', { class: 'pequeno' }, s?.user?.email || ''), ' ',
     h('button', { class: 'link pequeno', style: 'color:#fff', onclick: () => tentar(async () => { await dados.sair(); location.reload(); }) }, 'Sair'));
@@ -1531,6 +1593,8 @@ async function abrirSistema() {
   atualizarContador();
   // Cópia de segurança automática do dia (o banco faz 1 por dia; se falhar, não atrapalha o uso)
   dados.copiaDiaria?.().catch(() => {});
+  // Recompra 90/180 dias e Aniversário: cria os cupons e as mensagens do dia (não repete)
+  dados.gerarAutomaticas?.().then((n) => { if (n) atualizarContador(); }).catch(() => {});
 }
 
 // Instalar como aplicativo (janela própria, sem barra de endereço): o Chrome avisa quando é possível.
