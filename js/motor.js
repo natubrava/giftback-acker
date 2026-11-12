@@ -389,6 +389,10 @@ export function prazoEmPalavras(expiraEm, hoje) {
 
 /** Monta o texto final trocando as {variáveis}. `hoje` = dia do envio ('AAAA-MM-DD'). */
 export function montarMensagem(modelo, { cliente, giftback, config = CONFIG_PADRAO, hoje = diaSP(new Date()) }) {
+  // Cupom sem compra mínima (recompra, aniversário): tira o trecho "(compra mínima de ...)" em vez de escrever R$ 0,00
+  if (giftback && !giftback.minimoCentavos) {
+    modelo = String(modelo).replace(/\s*\((?:compra mínima de|válido para compras acima de)\s*\{minimo\}\)/gi, '');
+  }
   const faltam = giftback ? diasEntre(hoje, diaSP(giftback.expiraEm)) : null;
   const valores = {
     prazo: giftback ? prazoEmPalavras(giftback.expiraEm, hoje) : '',

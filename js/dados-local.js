@@ -8,7 +8,7 @@ import {
   CONFIG_PADRAO, calcularCompra, giftbackVigente, gerarCodigo, planejarMensagens,
   clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
   automaticasDoDia, TIPOS_RETORNO, somarDias, fimDoDiaSP,
-} from './motor.js?v=20261111222013';
+} from './motor.js?v=20261112010140';
 
 const CHAVE = 'giftback-acker-teste-v1';
 
@@ -211,7 +211,18 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
      * Registra a compra: dá baixa no giftback usado, cria o novo (se a compra der direito)
      * e agenda as mensagens. Devolve tudo que a tela precisa mostrar.
      */
-    async lancarCompra({ clienteId, valorCentavos, usarGiftback = false, data = null, uniplusOperacaoId = null, itensExcluidos = null, percentual = null }) {
+    async lancarCompra({ clienteId, valorCentavos, usarGiftback = false, data = null, uniplusOperacaoId = null, itensExcluidos = null, percentual = null, compraId = null }) {
+      const repetida = compraId && estado.compras.find((c) => c.id === compraId);
+      if (repetida) { // a mesma tentativa chegou duas vezes: não lança de novo
+        const gf = (id) => estado.giftbacks.find((x) => x.id === id) || null;
+        return {
+          compra: repetida, cliente: await this.obterCliente(repetida.clienteId), giftbackUsado: gf(repetida.giftbackUsadoId),
+          giftbackSubstituido: gf(repetida.giftbackSubstituidoId), giftbackMantidoMaior: null, novoDescartado: null,
+          novoGiftback: gf(repetida.giftbackGeradoId),
+          mensagemEnvio: estado.mensagens.find((m) => m.giftbackId === repetida.giftbackGeradoId && m.tipo === 'envio') || null,
+          jaEstavaRegistrada: true,
+        };
+      }
       expirarVencidos();
       const cliente = clientePorId(clienteId);
       if (!cliente) throw new Error('Cliente não encontrado.');
@@ -230,7 +241,7 @@ export function criarDadosLocal({ armazenamento = globalThis.localStorage, carre
       const r = calcularCompra({ valorCentavos, giftbackAtivo: atual, usarGiftback, config, agora });
 
       const compra = {
-        id: novoId(), clienteId, data: agora.toISOString(), valorCentavos,
+        id: compraId || novoId(), clienteId, data: agora.toISOString(), valorCentavos,
         descontoCentavos: r.descontoCentavos, valorFinalCentavos: r.valorFinalCentavos,
         codigoUsado: usarGiftback ? atual.codigo : null,
         giftbackUsadoId: null, giftbackGeradoId: null, giftbackSubstituidoId: null,

@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261111222013';
-import { criarDadosLocal } from './dados-local.js?v=20261111222013';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261111222013';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111222013';
-import { criarTelasExtras } from './telas-extra.js?v=20261111222013';
+import * as M from './motor.js?v=20261112010140';
+import { criarDadosLocal } from './dados-local.js?v=20261112010140';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261112010140';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261112010140';
+import { criarTelasExtras } from './telas-extra.js?v=20261112010140';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -129,8 +129,34 @@ async function atualizarContador() {
 }
 
 // Confere a fila a cada 10 minutos e quando a janela volta a ficar visível (ex.: virou o dia).
-setInterval(() => { atualizarContador().catch(() => {}); }, 10 * 60 * 1000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizarContador().catch(() => {}); });
+setInterval(() => { sincronizar(); }, 10 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) sincronizar(); });
+
+// Mantém este aparelho em dia com o que foi lançado em outro (PC do caixa e celular): relê clientes e giftbacks
+// (no máximo 1 vez a cada 2 minutos), confere a fila de mensagens e se há versão nova do sistema.
+let ultimaSincronia = 0;
+function sincronizar() {
+  if (!dados || !sistemaAberto) return;
+  const agora = Date.now();
+  const listas = agora - ultimaSincronia > 2 * 60 * 1000 && dados.atualizarListas ? dados.atualizarListas() : Promise.resolve();
+  if (agora - ultimaSincronia > 2 * 60 * 1000) ultimaSincronia = agora;
+  listas.catch(() => {}).then(() => atualizarContador()).catch(() => {});
+  conferirVersao();
+}
+
+// Versão nova publicada: avisa para atualizar (a janela instalada não se atualiza sozinha).
+const MINHA_VERSAO = new URL(import.meta.url).searchParams.get('v');
+async function conferirVersao() {
+  if (!MINHA_VERSAO || document.getElementById('faixa-versao')) return;
+  try {
+    const html = await fetch(`index.html?_=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''));
+    const nova = (html.match(/js\/app\.js\?v=(\d+)/) || [])[1];
+    if (nova && nova !== MINHA_VERSAO) {
+      document.body.append(h('div', { id: 'faixa-versao', class: 'faixa-versao' }, 'Há uma versão nova do Giftback Acker.',
+        h('button', { class: 'botao mini', onclick: () => location.reload() }, 'Atualizar agora')));
+    }
+  } catch { /* sem internet: tenta na próxima */ }
+}
 
 /** Campo "% de giftback desta venda": começa no padrão das Configurações e vale só para esta venda. */
 function campoPercentual(aoMudar, base = config) {
@@ -317,6 +343,32 @@ async function desenharResumoDoDia(painel) {
         h('td', { class: 'num' }, M.formatarReais(c.valorFinalCentavos)),
         h('td', {}, c.giftbackUsadoId ? h('span', { class: 'etiqueta azul' }, 'usou giftback') : ''))))))
       : (recentes.length ? null : h('p', { class: 'suave', style: 'text-align:center;margin-top:18px' }, 'Busque o cliente pelo nome, celular ou código do giftback para lançar a compra.')));
+  const lembrete = lembreteCopia();
+  if (lembrete) painel.append(lembrete);
+}
+
+/** Dias desde a última cópia de segurança baixada NESTE aparelho (null = nunca). */
+function diasSemBaixarCopia() {
+  let em = null;
+  try { em = localStorage.getItem('gb_ultima_copia_baixada'); } catch { /* sem armazenamento local */ }
+  return em ? M.diasEntre(em, hoje()) : null;
+}
+
+async function baixarCopiaAgora() {
+  baixarArquivo(await dados.exportarTudo(), `giftback-acker-copia-${hoje()}.json`);
+  try { localStorage.setItem('gb_ultima_copia_baixada', hoje()); } catch { /* sem armazenamento local */ }
+  avisar('Cópia de segurança baixada. Guarde o arquivo no Google Drive.');
+}
+
+/** Lembrete semanal, só para o administrador: a cópia que fica FORA do banco é a que salva se o banco inteiro falhar. */
+function lembreteCopia() {
+  if (!usuarioAdmin || dados.modo !== 'online') return null;
+  const d = diasSemBaixarCopia();
+  if (d != null && d <= 7) return null;
+  const cartao = h('div', { class: 'cartao lembrete-copia' },
+    h('span', {}, h('b', {}, 'Cópia de segurança: '), d == null ? 'neste aparelho ainda não foi baixada nenhuma.' : `a última baixada aqui foi há ${d} dias.`),
+    h('button', { class: 'botao mini', onclick: () => tentar(async () => { await baixarCopiaAgora(); cartao.remove(); }) }, 'Baixar agora'));
+  return cartao;
 }
 
 function painelNovoCliente(painel, prefill, aoSalvar, aoCancelar) {
@@ -575,7 +627,7 @@ function desenharFormulario(area, cliente, g, redesenhar) {
       h('button', { type: 'button', class: 'link pequeno', onclick: () => { fPromo.value = ''; linhaPromo.hidden = true; botaoPromo.hidden = false; rotuloValor(); atualizar(); fValor.focus(); } }, 'tirar')));
   const botaoPromo = h('button', { type: 'button', class: 'botao-promo', title: 'Tem item em promoção nesta compra? Clique para descontar do giftback' }, '% tem promoção?');
   botaoPromo.onclick = () => { linhaPromo.hidden = false; botaoPromo.hidden = true; rotuloValor(); fPromo.focus(); };
-  fPromo.addEventListener('input', atualizar);
+  fPromo.addEventListener('input', () => { compraId = novoIdCompra(); atualizar(); });
   fPromo.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !confirmar.disabled) { e.preventDefault(); confirmar.focus(); } });
   const textoRotulo = h('span', { class: 'obs' });
   const nomeRotulo = h('span', {});
@@ -586,6 +638,9 @@ function desenharFormulario(area, cliente, g, redesenhar) {
   };
   rotuloValor();
   let confirmaRepetida = false; // a caixa confirmou que é outra compra de mesmo valor
+  // Identificador desta tentativa: se a internet cair e a caixa clicar de novo, o banco não lança a compra duas vezes.
+  const novoIdCompra = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : null);
+  let compraId = novoIdCompra();
 
   function atualizar() {
     const total = M.lerReais(fValor.value);
@@ -641,18 +696,31 @@ function desenharFormulario(area, cliente, g, redesenhar) {
       return;
     }
     confirmar.disabled = false;
-    confirmar.onclick = () => tentar(async () => {
+    confirmar.onclick = async () => {
+      if (confirmar.disabled) return;
       confirmar.disabled = true;
-      estado.resultadoCompra = await dados.lancarCompra({ clienteId: cliente.id, valorCentavos: valor, usarGiftback: vaiUsar, percentual: pct.mudou() ? pct.valor() : null,
-        itensExcluidos: promo ? [{ nome: 'Itens em promoção (informado no caixa)', totalCentavos: promo, promocional: true }] : null });
-      estado.resultadoCompra.promoCentavos = promo;
-      await atualizarContador();
-      redesenhar();
-    });
+      confirmar.textContent = 'Registrando…';
+      try {
+        const res = await dados.lancarCompra({ clienteId: cliente.id, valorCentavos: valor, usarGiftback: vaiUsar, percentual: pct.mudou() ? pct.valor() : null,
+          itensExcluidos: promo ? [{ nome: 'Itens em promoção (informado no caixa)', totalCentavos: promo, promocional: true }] : null, compraId });
+        res.promoCentavos = promo;
+        estado.resultadoCompra = res;
+        if (res.jaEstavaRegistrada) avisar('Esta compra já tinha sido registrada. Não foi lançada de novo.');
+        await atualizarContador().catch(() => {});
+        redesenhar();
+      } catch (e) {
+        console.error(e);
+        confirmar.textContent = 'Registrar compra';
+        avisar(`${e.message || 'Não foi possível registrar a compra.'} Nada foi perdido: confira e clique de novo.`, true);
+        // relê o histórico do cliente: se a compra entrou mesmo com o erro, o aviso de "compra igual" aparece
+        try { const novo = await dados.obterCliente(cliente.id); if (novo) cliente.historicoCompras = novo.historicoCompras; } catch { /* sem internet */ }
+        atualizar();
+      }
+    };
   }
 
   comVirgulaAutomatica(fValor);
-  fValor.addEventListener('input', atualizar);
+  fValor.addEventListener('input', () => { compraId = novoIdCompra(); atualizar(); });
   fValor.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !confirmar.disabled) { e.preventDefault(); confirmar.focus(); } });
 
   fValor.id = 'valor-compra';
@@ -1391,6 +1459,25 @@ function baixarArquivo(conteudo, nome) {
 }
 
 function cartaoDadosOnline() {
+  // Restaurar: troca TUDO pelo conteúdo de uma cópia. Antes, baixa uma cópia de como está agora.
+  const restaurar = (descricao, executar) => tentar(async () => {
+    const conf = prompt(`RESTAURAR ${descricao}?\n\nTudo o que existe hoje (clientes, compras, giftbacks, mensagens, campanhas e configurações) será TROCADO pelo conteúdo dessa cópia. O que foi lançado depois dela deixa de existir.\n\nAntes de trocar, o sistema baixa uma cópia de como está agora.\n\nPara confirmar, digite: RESTAURAR`);
+    if (conf == null) return;
+    if (conf.trim().toUpperCase() !== 'RESTAURAR') { avisar('Nada foi alterado.'); return; }
+    baixarArquivo(await dados.exportarTudo(), `giftback-acker-antes-de-restaurar-${hoje()}.json`);
+    const r = await executar();
+    config = await dados.obterConfig();
+    estado.clienteId = null; estado.resultadoCompra = null; estado.busca = '';
+    avisar(`Cópia restaurada: ${r?.gb_clientes ?? 0} clientes e ${r?.gb_compras ?? 0} compras.`);
+    await atualizarContador();
+    telaConfig();
+  });
+  const arquivoCopia = h('input', { type: 'file', accept: '.json,application/json' });
+  const restaurarArquivo = () => {
+    const f = arquivoCopia.files?.[0];
+    if (!f) { avisar('Escolha o arquivo da cópia (giftback-acker-copia-....json).', true); return; }
+    restaurar(`o arquivo "${f.name}"`, async () => dados.restaurarCopia(JSON.parse(await f.text())));
+  };
   // Há quantos dias a última cópia foi baixada neste computador
   let baixadaEm = null;
   try { baixadaEm = localStorage.getItem('gb_ultima_copia_baixada'); } catch { /* sem armazenamento local */ }
@@ -1412,7 +1499,9 @@ function cartaoDadosOnline() {
           h('td', {}, M.formatarDia(c.dia)),
           h('td', { class: 'num' }, c.resumo.clientes ?? ''), h('td', { class: 'num' }, c.resumo.compras ?? ''),
           h('td', { class: 'num' }, c.resumo.giftbacks ?? ''), h('td', { class: 'num' }, c.resumo.mensagens ?? ''),
-          h('td', {}, h('button', { class: 'link', type: 'button', onclick: () => tentar(async () => { baixarArquivo(await dados.baixarCopia(c.dia), `giftback-acker-copia-${c.dia}.json`); avisar('Cópia baixada.'); }) }, 'baixar')))))))
+          h('td', { style: 'white-space:nowrap' },
+            h('button', { class: 'link', type: 'button', onclick: () => tentar(async () => { baixarArquivo(await dados.baixarCopia(c.dia), `giftback-acker-copia-${c.dia}.json`); avisar('Cópia baixada.'); }) }, 'baixar'),
+            usuarioAdmin ? [' · ', h('button', { class: 'link perigo-link', type: 'button', onclick: () => restaurar(`a cópia automática de ${M.formatarDia(c.dia)}`, () => dados.restaurarCopiaDoDia(c.dia)) }, 'restaurar')] : null))))))
         : h('p', { class: 'suave pequeno' }, 'Nenhuma cópia automática ainda. A primeira é feita hoje.'));
     } catch {
       trocar(copias, h('p', { class: 'suave pequeno' }, 'As cópias automáticas ainda não foram ativadas no banco.'));
@@ -1426,7 +1515,12 @@ function cartaoDadosOnline() {
     if (!f) throw new Error('Escolha o arquivo seed.json (pasta GIFTBACK ACKER > dados_migrados).');
     const seed = JSON.parse(await f.text());
     if (!confirm(`Importar ${seed.clientes?.length ?? 0} clientes, ${seed.compras?.length ?? 0} compras e ${seed.giftbacks?.length ?? 0} giftbacks da Zoppy?`)) return;
-    await dados.importarSeed(seed, (txt) => { situacao.textContent = txt; });
+    try {
+      await dados.importarSeed(seed, (txt) => { situacao.textContent = txt; });
+    } catch (e) {
+      situacao.textContent = 'A importação não terminou.';
+      throw new Error(`${e.message} Se a importação parou no meio, clique em "Apagar todos os dados" e importe de novo (não fica nada pela metade).`);
+    }
     config = await dados.obterConfig();
     situacao.textContent = 'Importação concluída.';
     avisar('Dados da Zoppy importados.');
@@ -1453,6 +1547,11 @@ function cartaoDadosOnline() {
     h('h3', { style: 'margin-top:18px' }, 'Cópias automáticas'),
     h('p', { class: 'suave', style: 'margin:6px 0 10px' }, 'O sistema guarda sozinho uma cópia por dia (na primeira vez que alguém abre o Giftback Acker no dia) e mantém as dos últimos 14 dias. Servem para voltar atrás se algo for apagado ou alterado por engano.'),
     copias,
+    usuarioAdmin ? [
+      h('h3', { style: 'margin-top:18px' }, 'Restaurar uma cópia'),
+      h('p', { class: 'suave', style: 'margin:6px 0 10px' }, 'Para voltar o sistema ao estado de uma cópia: use "restaurar" na lista acima, ou escolha aqui um arquivo de cópia baixado antes. A troca é feita de uma vez só: se der qualquer erro, nada muda. Só o administrador pode restaurar.'),
+      h('div', { class: 'linha-flex' }, arquivoCopia, h('button', { class: 'botao perigo', type: 'button', onclick: restaurarArquivo }, 'Restaurar deste arquivo')),
+    ] : null,
     h('hr', { style: 'border:0;border-top:1px solid var(--linha);margin:18px 0' }),
     h('h3', {}, 'Dados da Zoppy'),
     h('p', { class: 'suave', style: 'margin:6px 0 12px' }, 'Para trazer os clientes, compras e giftbacks da Zoppy: escolha o arquivo ', h('b', {}, 'seed.json'), ' da pasta GIFTBACK ACKER > dados_migrados e clique em Importar. Só funciona com o banco vazio.'),
@@ -1604,6 +1703,7 @@ async function abrirSistema() {
   dados.copiaDiaria?.().catch(() => {});
   // Recompra 90/180 dias e Aniversário: cria os cupons e as mensagens do dia (não repete)
   dados.gerarAutomaticas?.().then((n) => { if (n) atualizarContador(); }).catch(() => {});
+  setTimeout(conferirVersao, 60 * 1000); // e depois a cada 10 minutos / ao voltar para a janela
 }
 
 // Instalar como aplicativo (janela própria, sem barra de endereço): o Chrome avisa quando é possível.

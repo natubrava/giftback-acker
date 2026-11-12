@@ -4,7 +4,7 @@
 import {
   CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
   TIPOS_RETORNO,
-} from './motor.js?v=20261111222013';
+} from './motor.js?v=20261112010140';
 
 const PAGINA = 1000;
 
@@ -232,7 +232,31 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       return this.obterCliente(id);
     },
 
-    async lancarCompra({ clienteId, valorCentavos, usarGiftback = false, data = null, uniplusOperacaoId = null, itensExcluidos = null, percentual = null }) {
+    /** Resultado de uma compra que já está no banco (usado quando a mesma tentativa chega duas vezes). */
+    async resultadoDaCompra(compraId) {
+      const c = ok(await supabase.from('gb_compras').select('*').eq('id', compraId).single());
+      const ids = [c.giftback_gerado_id, c.giftback_usado_id, c.giftback_substituido_id].filter(Boolean);
+      const gifts = ids.length ? ok(await supabase.from('gb_giftbacks').select('*').in('id', ids)) : [];
+      const g = (id) => giftback(gifts.find((x) => x.id === id)) || null;
+      const envio = c.giftback_gerado_id
+        ? ok(await supabase.from('gb_mensagens').select('*').eq('giftback_id', c.giftback_gerado_id).eq('tipo', 'envio').maybeSingle()) : null;
+      const cli = await this.obterCliente(c.cliente_id);
+      return {
+        compra: compra(c), cliente: cli, giftbackUsado: g(c.giftback_usado_id), giftbackSubstituido: g(c.giftback_substituido_id),
+        giftbackMantidoMaior: null, novoDescartado: null, novoGiftback: g(c.giftback_gerado_id), mensagemEnvio: mensagem(envio) || null,
+        jaEstavaRegistrada: true,
+      };
+    },
+
+    /**
+     * compraId: identificador criado pela tela para ESTA tentativa. Se a internet cair e a caixa clicar de novo,
+     * o banco reconhece o identificador e a compra não entra duas vezes.
+     */
+    async lancarCompra({ clienteId, valorCentavos, usarGiftback = false, data = null, uniplusOperacaoId = null, itensExcluidos = null, percentual = null, compraId = null }) {
+      if (compraId) {
+        const ja = ok(await supabase.from('gb_compras').select('id').eq('id', compraId).maybeSingle());
+        if (ja) return this.resultadoDaCompra(compraId);
+      }
       let linhaCliente = resumos.find((r) => r.id === clienteId);
       if (!linhaCliente) linhaCliente = ok(await supabase.from('gb_clientes').select('perfil').eq('id', clienteId).maybeSingle());
       const doCliente = configParaCliente(configAtual(), linhaCliente); // perfil especial pode ter % e mínimo próprios
@@ -248,8 +272,9 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       const mensagens = r.novoGiftback
         ? planejarMensagens({ criadoEm: agora.toISOString(), expiraEm: r.novoGiftback.expiraEm }, config).map((m) => ({ tipo: m.tipo, devida_em: m.devidaEm }))
         : [];
-      const res = ok(await supabase.rpc('gb_registrar_compra', {
+      const resposta = await supabase.rpc('gb_registrar_compra', {
         p: {
+          compra_id: compraId,
           cliente_id: clienteId, giftback_atual_id: atual?.id || null, acao_anterior: r.giftbackAnterior,
           valor_centavos: valorCentavos, desconto_centavos: r.descontoCentavos, valor_final_centavos: r.valorFinalCentavos,
           novo: r.novoGiftback ? { valor_centavos: r.novoGiftback.valorCentavos, minimo_centavos: r.novoGiftback.minimoCentavos, expira_em: r.novoGiftback.expiraEm, prefixo: config.prefixoCodigo } : null,
@@ -258,7 +283,9 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
           uniplus_operacao_id: uniplusOperacaoId,
           itens_excluidos: itensExcluidos,
         },
-      }));
+      });
+      if (compraId && /COMPRA_JA_REGISTRADA/.test(resposta.error?.message || '')) return this.resultadoDaCompra(compraId);
+      const res = ok(resposta);
       const [c, novo, envio] = await Promise.all([
         supabase.from('gb_compras').select('*').eq('id', res.compra_id).single().then(ok),
         res.giftback_id ? supabase.from('gb_giftbacks').select('*').eq('id', res.giftback_id).single().then(ok) : null,
@@ -417,6 +444,28 @@ export function criarDadosSupabase({ supabase, relogio = () => new Date() }) {
       } }));
       if (n) await recarregar();
       return n || 0;
+    },
+
+    /** Relê do banco a lista de clientes e os giftbacks ativos (o que outro aparelho lançou aparece aqui). */
+    async atualizarListas() { await recarregar(); },
+
+    /** Restaura uma cópia de segurança (arquivo). Troca tudo de uma vez só; se der erro, nada muda. Só o administrador. */
+    async restaurarCopia(copia) {
+      const tabelas = ['gb_clientes', 'gb_compras', 'gb_giftbacks', 'gb_mensagens', 'gb_campanhas', 'gb_config', 'gb_uniplus_ignoradas'];
+      if (!copia || !Array.isArray(copia.gb_clientes) || !copia.gb_clientes.length) {
+        throw new Error('Este arquivo não é uma cópia de segurança do Giftback Acker. (Para os dados da Zoppy, use "Importar".)');
+      }
+      const p = Object.fromEntries(tabelas.filter((t) => Array.isArray(copia[t])).map((t) => [t, copia[t]]));
+      const r = ok(await supabase.rpc('gb_restaurar_copia', { p, confirmacao: 'RESTAURAR' }));
+      await this.iniciar();
+      return r;
+    },
+
+    /** Restaura direto de uma cópia automática guardada no banco. Só o administrador. */
+    async restaurarCopiaDoDia(dia) {
+      const r = ok(await supabase.rpc('gb_restaurar_copia_do_dia', { p_dia: dia, confirmacao: 'RESTAURAR' }));
+      await this.iniciar();
+      return r;
     },
 
     /** Cópia automática do dia (feita no banco, 1 por dia, guardada 14 dias). Devolve true se criou agora. */
