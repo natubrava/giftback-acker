@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261112083912';
-import { criarDadosLocal } from './dados-local.js?v=20261112083912';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261112083912';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261112083912';
-import { criarTelasExtras } from './telas-extra.js?v=20261112083912';
+import * as M from './motor.js?v=20261112112342';
+import { criarDadosLocal } from './dados-local.js?v=20261112112342';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261112112342';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261112112342';
+import { criarTelasExtras } from './telas-extra.js?v=20261112112342';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -535,6 +535,15 @@ function situacaoGiftback(g, c) {
 const STATUS_MSG = { enviada: ['verde', 'enviada'], pendente: ['ambar', 'na fila'], pulada: ['cinza', 'pulada'], cancelada: ['cinza', 'não precisou'] };
 
 /** Histórico do cliente em 3 abas: compras, giftbacks e mensagens (para tirar dúvida do cliente no balcão). */
+// Link para o Radar de Clientes (site separado, mesmo login). Vai pelo # para o celular/nome não irem ao servidor.
+function urlRadar(c) {
+  const p = new URLSearchParams();
+  if (c.uniplusCodigo) p.set('cliente', c.uniplusCodigo);
+  if (c.telefone) p.set('telefone', String(c.telefone).replace(/\D/g, ''));
+  if (c.nome) p.set('nome', `${c.nome} ${c.sobrenome || ''}`.trim());
+  return 'https://natubrava.github.io/clientes-radar/#' + p.toString();
+}
+
 function desenharHistorico(caixa, c, redesenhar) {
   const listaGifts = linhasGiftbacks(c);
   const abas = [['compras', `Compras (${c.historicoCompras.length})`], ['giftbacks', `Giftbacks (${listaGifts.length})`], ['mensagens', `Mensagens (${(c.historicoMensagens || []).length})`]];
@@ -589,12 +598,14 @@ function desenharHistorico(caixa, c, redesenhar) {
   const barra = h('div', { class: 'subabas' });
   // Recolhido por padrão: o título com a setinha abre e fecha. A primeira linha resume o cliente.
   const diasDesde = c.ultimaCompra ? M.diasEntre(M.diaSP(c.ultimaCompra), hoje()) : null;
+  const linkRadar = h('a', { href: urlRadar(c), target: '_blank', rel: 'noopener', title: 'Abre o Radar de Clientes: tudo o que este cliente comprou no Uniplus' }, 'Ver produtos que comprou ↗');
   const resumoCliente = c.ultimaCompra
     ? h('div', { class: 'historico-resumo' },
       h('span', {}, 'Última compra ', h('b', {}, dia(c.ultimaCompra)), ` (${diasDesde === 0 ? 'hoje' : diasDesde === 1 ? 'ontem' : `há ${diasDesde} dias`})`),
       h('span', {}, h('b', {}, c.compras), ` compra${c.compras > 1 ? 's' : ''}`),
-      h('span', { title: 'Soma só das compras lançadas no Club NatuBrava (não inclui vendas do PDV que não foram lançadas aqui)' }, 'total lançado no Club ', h('b', {}, M.formatarReais(c.totalCentavos))))
-    : h('div', { class: 'historico-resumo' }, 'Ainda não tem compras.');
+      h('span', { title: 'Soma só das compras lançadas no Club NatuBrava (não inclui vendas do PDV que não foram lançadas aqui)' }, 'total lançado no Club ', h('b', {}, M.formatarReais(c.totalCentavos))),
+      linkRadar)
+    : h('div', { class: 'historico-resumo' }, h('span', {}, 'Ainda não tem compras.'), linkRadar);
   const conteudo = h('div', { class: 'historico-conteudo' }, resumoCliente, barra, corpo);
   const seta = h('span', { class: 'historico-seta', 'aria-hidden': 'true' }, '▸');
   const titulo = h('button', { type: 'button', class: 'historico-titulo', 'aria-expanded': 'false' },
