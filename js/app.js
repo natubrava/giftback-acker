@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261112134928';
-import { criarDadosLocal } from './dados-local.js?v=20261112134928';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261112134928';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261112134928';
-import { criarTelasExtras } from './telas-extra.js?v=20261112134928';
+import * as M from './motor.js?v=20261112134944';
+import { criarDadosLocal } from './dados-local.js?v=20261112134944';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261112134944';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261112134944';
+import { criarTelasExtras } from './telas-extra.js?v=20261112134944';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
