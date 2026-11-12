@@ -8,7 +8,7 @@ import {
   CONFIG_PADRAO, calcularCompra, giftbackVigente, gerarCodigo, planejarMensagens,
   clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
   automaticasDoDia, TIPOS_RETORNO, somarDias, fimDoDiaSP,
-} from './motor.js?v=20261111221755';
+} from './motor.js?v=20261111222013';
 
 const CHAVE = 'giftback-acker-teste-v1';
 

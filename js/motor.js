@@ -239,7 +239,9 @@ export function clienteCombina(cliente, busca) {
   if (soNumero) {
     if (digitos.length < 3) return false;
     const alvo = digitos.length >= 12 && digitos.startsWith('55') ? digitos.slice(2) : digitos;
-    return String(cliente.telefone ?? '').includes(alvo) || String(cliente.cpf ?? '').replace(/\D/g, '').includes(alvo);
+    const comNove = digitos.length === 10 ? normalizarTelefone(digitos) : null; // digitou o celular sem o 9 da frente
+    const tel = String(cliente.telefone ?? '');
+    return tel.includes(alvo) || (comNove && tel === comNove) || String(cliente.cpf ?? '').replace(/\D/g, '').includes(alvo);
   }
   const nome = semAcento(`${cliente.nome ?? ''} ${cliente.sobrenome ?? ''}`);
   return q.split(/\s+/).every((parte) => nome.includes(parte));
