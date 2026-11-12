@@ -4,7 +4,7 @@
 import {
   CONFIG_PADRAO, calcularCompra, planejarMensagens, clienteCombina, normalizarTelefone, diaSP, organizarFila, configParaCliente, historicoRegras,
   TIPOS_RETORNO,
-} from './motor.js?v=20261112131524';
+} from './motor.js?v=20261112134928';
 
 const PAGINA = 1000;
 
