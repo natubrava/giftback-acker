@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261112010140';
-import { criarDadosLocal } from './dados-local.js?v=20261112010140';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261112010140';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261112010140';
-import { criarTelasExtras } from './telas-extra.js?v=20261112010140';
+import * as M from './motor.js?v=20261112083317';
+import { criarDadosLocal } from './dados-local.js?v=20261112083317';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261112083317';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261112083317';
+import { criarTelasExtras } from './telas-extra.js?v=20261112083317';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -1576,12 +1576,12 @@ function telaLogin(mensagem = '') {
   const primeiroAcesso = () => tentar(async () => {
     if (!fEmail.value.trim() || fSenha.value.length < 8) throw new Error('Digite o e-mail e uma senha nova com pelo menos 8 caracteres.');
     await dados.criarAcesso(fEmail.value, fSenha.value, ENDERECO_APP);
-    trocar(info, h('div', { class: 'caixa-info verde', style: 'margin-bottom:12px' }, 'Pronto! Enviamos um e-mail de confirmação. Abra o e-mail, clique no link e depois entre aqui com a senha que você criou.'));
+    trocar(info, h('div', { class: 'caixa-info verde', style: 'margin-bottom:12px' }, 'Pronto! Enviamos um e-mail de confirmação: abra, clique no link e depois entre aqui com a senha que você criou. Se o e-mail não chegar em alguns minutos, avise o Jacson para liberar o seu acesso.'));
   });
   const esqueci = () => tentar(async () => {
     if (!fEmail.value.trim()) throw new Error('Digite o seu e-mail primeiro.');
     await dados.recuperarSenha(fEmail.value, ENDERECO_APP);
-    trocar(info, h('div', { class: 'caixa-info verde', style: 'margin-bottom:12px' }, 'Enviamos um e-mail com o link para criar uma senha nova.'));
+    trocar(info, h('div', { class: 'caixa-info verde', style: 'margin-bottom:12px' }, 'Enviamos um e-mail com o link para criar uma senha nova (pode levar alguns minutos; o sistema manda no máximo 2 e-mails por hora). Se não chegar, avise o Jacson.'));
   });
   mostrarMenus(false);
   trocar(tela, h('form', { class: 'cartao', style: 'max-width:420px;margin:40px auto', onsubmit: (e) => { e.preventDefault(); entrar(); } },
