@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261112112342';
-import { criarDadosLocal } from './dados-local.js?v=20261112112342';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261112112342';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261112112342';
-import { criarTelasExtras } from './telas-extra.js?v=20261112112342';
+import * as M from './motor.js?v=20261112131524';
+import { criarDadosLocal } from './dados-local.js?v=20261112131524';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261112131524';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261112131524';
+import { criarTelasExtras } from './telas-extra.js?v=20261112131524';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -251,7 +251,7 @@ function seletorPerfil(atual = '') {
 
 function telaCaixa() {
   const campo = h('input', {
-    type: 'search', id: 'busca', placeholder: 'Nome, celular ou código do giftback', autocomplete: 'off',
+    type: 'search', id: 'busca', placeholder: 'Nome, celular, código do giftback ou do cliente no Uniplus', autocomplete: 'off',
     value: estado.busca, 'aria-label': 'Buscar cliente',
   });
   const resultados = h('div', { class: 'resultados' });

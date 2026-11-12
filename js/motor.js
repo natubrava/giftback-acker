@@ -229,7 +229,7 @@ export function primeiroNome(nome) {
 
 /**
  * O cliente bate com a busca? Aceita nome (qualquer ordem, sem acento),
- * telefone (trecho de 3+ dígitos) ou CPF.
+ * telefone (trecho de 3+ dígitos), CPF ou o código do cliente no Uniplus (inteiro).
  */
 export function clienteCombina(cliente, busca) {
   const q = semAcento(busca);
@@ -241,6 +241,9 @@ export function clienteCombina(cliente, busca) {
     const alvo = digitos.length >= 12 && digitos.startsWith('55') ? digitos.slice(2) : digitos;
     const comNove = digitos.length === 10 ? normalizarTelefone(digitos) : null; // digitou o celular sem o 9 da frente
     const tel = String(cliente.telefone ?? '');
+    // Código do cliente no Uniplus (ex.: 4501705322, aparece no PDV em "Identificar participantes"): tem que ser o código inteiro.
+    const codUniplus = String(cliente.uniplusCodigo ?? cliente.uniplus_codigo ?? '').replace(/\D/g, '');
+    if (codUniplus && digitos === codUniplus) return true;
     return tel.includes(alvo) || (comNove && tel === comNove) || String(cliente.cpf ?? '').replace(/\D/g, '').includes(alvo);
   }
   const nome = semAcento(`${cliente.nome ?? ''} ${cliente.sobrenome ?? ''}`);

@@ -1,7 +1,7 @@
 // telas-extra.js — Telas "Relatórios" (matriz RFM) e "Campanhas".
 // Recebe do app.js as ferramentas de tela (h, trocar, avisar...) para não duplicar código.
-import * as M from './motor.js?v=20261112112342';
-import { SEGMENTOS_RFM, classificarRFM, resumoGrupo, filtrarPublico, descreverPublico, segmentoRFM, limitesRFM, explicarSegmento } from './rfm.js?v=20261112112342';
+import * as M from './motor.js?v=20261112131524';
+import { SEGMENTOS_RFM, classificarRFM, resumoGrupo, filtrarPublico, descreverPublico, segmentoRFM, limitesRFM, explicarSegmento } from './rfm.js?v=20261112131524';
 
 // Em qual quadradinho da grade 5x5 aparece o nome de cada categoria (coluna = recência R, linha = frequência/valor FM).
 const ROTULO = { nao_pode_perder: '2,5', fiel: '4,5', campeao: '5,5', em_risco: '2,4', atencao: '3,3', possivel_fiel: '5,3',
