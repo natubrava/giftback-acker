@@ -1,10 +1,10 @@
 // app.js — Telas do Giftback Acker (Caixa, Mensagens, Clientes, Configurações) e login.
 // As regras ficam em motor.js; os dados, em dados-supabase.js (online) ou dados-local.js (modo teste).
-import * as M from './motor.js?v=20261111220614';
-import { criarDadosLocal } from './dados-local.js?v=20261111220614';
-import { criarDadosSupabase } from './dados-supabase.js?v=20261111220614';
-import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111220614';
-import { criarTelasExtras } from './telas-extra.js?v=20261111220614';
+import * as M from './motor.js?v=20261111221755';
+import { criarDadosLocal } from './dados-local.js?v=20261111221755';
+import { criarDadosSupabase } from './dados-supabase.js?v=20261111221755';
+import { SUPABASE_URL, SUPABASE_CHAVE_PUBLICA } from './config-online.js?v=20261111221755';
+import { criarTelasExtras } from './telas-extra.js?v=20261111221755';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const MODO_TESTE = new URLSearchParams(location.search).get('modo') === 'teste' || !SUPABASE_URL;
@@ -201,6 +201,15 @@ function comMascaraTelefone(campo) {
     // apagou só um ")", "." ou "-": apaga o número junto, senão o cursor fica preso
     if (String(e.inputType || '').startsWith('delete') && digitos(v) === digitos(antes)) v = digitos(v).slice(0, -1);
     campo.value = antes = M.mascararTelefone(v);
+  });
+  // Ao sair do campo: celular digitado sem o 9 da frente ganha o 9 (47 9932-8511 vira (47) 9.9932-8511)
+  campo.addEventListener('blur', () => {
+    const certo = M.normalizarTelefone(campo.value);
+    if (certo && certo !== digitos(campo.value)) {
+      campo.value = antes = M.mascararTelefone(certo);
+      avisar(`Acrescentei o 9 na frente do celular: ${campo.value}`);
+      campo.dispatchEvent(new Event('input'));
+    }
   });
   return campo;
 }

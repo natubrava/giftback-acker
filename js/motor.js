@@ -202,6 +202,9 @@ export function normalizarTelefone(texto) {
   d = d.replace(/^0+/, '');
   if ((d.length === 12 || d.length === 13) && d.startsWith('55')) d = d.slice(2);
   d = d.replace(/^0+/, '');
+  // Celular sem o 9 da frente (padrão antigo, 8 dígitos começando por 6, 7, 8 ou 9): acrescenta o 9.
+  // Fixo (começa por 2, 3, 4 ou 5) continua com 10 dígitos.
+  if (d.length === 10 && /[6-9]/.test(d[2])) d = `${d.slice(0, 2)}9${d.slice(2)}`;
   return d.length === 10 || d.length === 11 ? d : null;
 }
 
